@@ -1,0 +1,333 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: #04060d;
+  font-family: ui-sans-serif, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;
+  color: #cdd6e4;
+}
+
+#ca-canvas {
+  position: fixed; inset: 0;
+  /* dvw/dvh track the *visible* viewport, matching window.innerHeight that the
+     JS layout and the WebGPU drawing buffer use. Static vh is the large
+     (address-bar-hidden) viewport, which left the separators offset from the
+     drag handles by the address-bar height on mobile. */
+  width: 100dvw; height: 100dvh;
+  display: block;
+  /* let pointer/touch gestures reach the orbit & pinch-zoom handlers rather
+     than scrolling or page-zooming on mobile */
+  touch-action: none;
+}
+#ca-canvas.orbiting { cursor: grabbing; }
+
+/* ---- top stack: control bar + camera panel, centered under each other ---- */
+#top-stack {
+  position: fixed; top: 10px; left: 50%;
+  transform: translateX(-50%);
+  display: flex; align-items: flex-start; flex-wrap: wrap;
+  gap: 8px;
+  z-index: 20;
+  max-width: calc(100vw - 16px);
+}
+
+/* ---- control bar (pinned to the bottom-centre) ---- */
+#controls {
+  position: fixed; bottom: 10px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: nowrap; gap: 4px;
+  max-width: calc(100vw - 16px);
+  background: rgba(10, 14, 26, 0.82);
+  border: 1px solid #232c42;
+  border-radius: 10px;
+  padding: 6px 8px;
+  backdrop-filter: blur(6px);
+  user-select: none;
+}
+#controls button, #controls #btn-github {
+  background: none; border: 1px solid transparent; border-radius: 6px;
+  color: #cdd6e4; font-size: 16px; line-height: 1;
+  padding: 6px 6px; cursor: pointer;
+}
+#controls button:hover, #controls #btn-github:hover { background: #1b2438; border-color: #2c3a5c; }
+#controls #btn-github { display: inline-flex; align-items: center; color: #8b97ad; }
+#controls #btn-github:hover { color: #cdd6e4; }
+#controls .sep { width: 1px; height: 20px; background: #232c42; }
+#controls label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: #8b97ad; letter-spacing: 0.04em;
+  min-width: 0; /* let the slider inside shrink rather than wrap the row */
+}
+#controls input[type="range"] { flex: 1 1 64px; min-width: 32px; width: auto; }
+
+
+/* ---- region resize handles ---- */
+.handle {
+  position: fixed; left: 0; width: 100%;
+  height: 18px; margin-top: -9px;
+  cursor: row-resize;
+  z-index: 15;
+  /* let the vertical drag move the handle instead of being stolen for
+     page-scrolling on touch (which cancelled the drag after a few pixels) */
+  touch-action: none;
+}
+.handle::after {
+  content: "";
+  position: absolute; left: 0; right: 0; top: 50%;
+  transform: translateY(-50%);
+  height: 1px;
+  background: #2a3551;
+  transition: background 0.15s, height 0.15s;
+}
+.handle:hover::after, .handle.dragging::after {
+  background: #5b8cff;
+  height: 3px;
+}
+
+/* ---- per-region info buttons ---- */
+.info-btn {
+  position: fixed; right: 16px;
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  border: 2px solid #5b8cff;
+  background: rgba(13, 19, 34, 0.92);
+  color: #aac4ff;
+  font: italic bold 19px Georgia, serif;
+  cursor: pointer;
+  z-index: 18;
+  box-shadow: 0 0 12px rgba(91, 140, 255, 0.45);
+  transition: transform 0.12s, box-shadow 0.12s, color 0.12s;
+}
+.info-btn:hover {
+  color: #fff;
+  transform: scale(1.12);
+  box-shadow: 0 0 18px rgba(91, 140, 255, 0.8);
+}
+
+/* ---- info modal ---- */
+#modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(2, 4, 10, 0.6);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 30;
+}
+#modal {
+  position: relative;
+  max-width: 36rem; margin: 16px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  background: #0d1322;
+  border: 1px solid #2c3a5c;
+  border-radius: 14px;
+  padding: 22px 26px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
+}
+#modal h2 { font-size: 17px; margin-bottom: 10px; color: #e8eefb; }
+#modal h3 {
+  font-size: 14px; color: #cfdcf5;
+  margin: 18px 0 8px;
+  padding-top: 14px;
+  border-top: 1px solid #1d2740;
+}
+#modal p { font-size: 14px; line-height: 1.55; color: #aab6cd; margin-bottom: 10px; }
+#modal a { color: #8fb0ff; }
+#modal a:hover { color: #c4d6ff; }
+#modal .photo { margin: 12px 0 14px; }
+#modal .photo img {
+  display: block;
+  max-width: 100%;
+  border-radius: 10px;
+  border: 1px solid #2c3a5c;
+}
+#modal .photo figcaption {
+  font-size: 12px; color: #76849c; margin-top: 6px; line-height: 1.4;
+}
+
+/* ---- embedded video ---- */
+#modal .video {
+  position: relative; width: 100%; aspect-ratio: 16 / 9;
+  margin: 14px 0 6px;
+}
+#modal .video iframe {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  border: 0; border-radius: 10px;
+}
+
+/* ---- logic gate schematic ---- */
+.gate svg { width: 100%; max-width: 300px; height: auto; display: block; }
+.gate .wire { stroke: #44537a; stroke-width: 2; }
+.gate .gate-body { fill: #16203a; stroke: #5b8cff; stroke-width: 2; }
+.gate .gate-label { fill: #8fb0ff; font: bold 15px ui-sans-serif, system-ui; }
+.gate .io { fill: #76849c; font: 12px ui-sans-serif, system-ui; }
+.gate .glider { fill: #73ffb8; }
+.pixgrid {
+  display: grid; gap: 1px; margin: 4px 0;
+  padding: 3px;
+  background: #060a14;
+  border: 1px solid #33415f;
+  border-radius: 4px;
+}
+.pixgrid .cell {
+  width: var(--px, 11px); height: var(--px, 11px);
+  border-radius: 1px; border: none;
+  background: #2b3656;
+}
+
+/* ---- info diagrams ---- */
+.diagram {
+  display: flex; flex-wrap: wrap; align-items: flex-end;
+  justify-content: flex-start;
+  gap: 14px 18px;
+  margin: 14px 2px 16px;
+}
+.diagram figure {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+.diagram figcaption {
+  font-size: 11px; color: #76849c; text-align: center; max-width: 96px;
+  line-height: 1.3;
+}
+.diagram figure.wide figcaption { max-width: 320px; }
+.mini {
+  display: grid; gap: 2px;
+  grid-template-columns: repeat(3, 16px);
+}
+.mini.wide { grid-template-columns: repeat(3, 14px); }
+.cell {
+  width: 16px; height: 16px; border-radius: 2px;
+  background: #28324f;
+  border: 1px solid #44537a;
+}
+.mini.wide .cell { width: 14px; height: 14px; }
+.cell.on { background: var(--accent, #ffb847); border-color: var(--accent, #ffb847); }
+.cell.focus { box-shadow: inset 0 0 0 2px #5b8cff; border-color: #5b8cff; }
+.cell.count { background: #34508c; border-color: #5b7fc8; }
+.cell.gone { background: #161d31; border-color: #313c5c; }
+.flow {
+  display: flex; align-items: center; gap: 6px;
+}
+.flow .arrow { color: #5b8cff; font-size: 15px; }
+.r30case { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.r30case .arrow { color: #5b8cff; font-size: 11px; line-height: 1; }
+.r30row { display: flex; gap: 2px; }
+.r30case .cell { width: 14px; height: 14px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 14px; }
+.chip {
+  font-size: 12px; color: #cdd6e4;
+  background: #16203a; border: 1px solid #2c3a5c;
+  border-radius: 99px; padding: 4px 12px;
+}
+.chip b { color: #8fb0ff; font-weight: 600; }
+.fade-strip { display: flex; align-items: center; gap: 3px; margin: 6px 0 14px; }
+.fade-strip .cell { width: 18px; height: 18px; }
+.fade-strip .lbl { font-size: 11px; color: #76849c; margin: 0 6px; }
+.layers { display: flex; gap: 14px; align-items: flex-end; }
+#modal-close {
+  position: absolute; top: 8px; right: 12px;
+  background: none; border: none;
+  color: #8b97ad; font-size: 22px; cursor: pointer;
+}
+#modal-close:hover { color: #fff; }
+
+/* ---- error overlay ---- */
+.overlay {
+  position: fixed; inset: 0;
+  background: #04060d;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center;
+  z-index: 40;
+  padding: 24px;
+  overflow-y: auto;
+}
+.overlay-box { max-width: 540px; }
+.overlay h2 { margin-bottom: 12px; }
+.overlay p { color: #8b97ad; max-width: 540px; line-height: 1.5; margin-bottom: 8px; }
+.overlay code { color: #cdd6e4; }
+.overlay strong { color: #cdd6e4; }
+.overlay .adapter-info {
+  font-size: 12px; color: #5d6781; margin-top: 14px; word-break: break-word;
+}
+
+/* per-browser help in the "WebGPU not available" screen */
+.gpu-help { text-align: left; margin: 18px auto 4px; max-width: 540px; }
+.gpu-help h3 {
+  font-size: 13px; color: #aac4ff; margin: 16px 0 6px;
+  letter-spacing: 0.02em;
+}
+.gpu-help ul { margin: 0 0 4px; padding-left: 18px; }
+.gpu-help li { color: #8b97ad; font-size: 13px; line-height: 1.5; margin-bottom: 5px; }
+.gpu-help em { color: #cdd6e4; font-style: normal; }
+
+/* "Proceed anyway" action on the software-render warning */
+.overlay-actions { margin-top: 20px; }
+#warn-proceed {
+  background: #1b2438; border: 1px solid #2c3a5c; border-radius: 8px;
+  color: #cdd6e4; font-size: 14px; padding: 9px 18px; cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+#warn-proceed:hover { background: #243150; border-color: #3a4d78; }
+
+.hidden { display: none !important; }
+
+/* ---- 3D panel: rule selector + camera tuning ---- */
+#cam-panel {
+  width: 188px;
+  max-width: 100%;
+  background: rgba(10, 14, 26, 0.9);
+  border: 1px solid #2c3a5c;
+  border-radius: 9px;
+  backdrop-filter: blur(6px);
+  font-size: 12px;
+  user-select: none;
+}
+#cam-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 5px 10px;
+  color: #cdd6e4; font-weight: 600;
+  cursor: pointer;
+}
+#cam-caret { color: #8b97ad; transition: transform 0.15s; }
+#cam-panel.collapsed #cam-caret { transform: rotate(-90deg); }
+#cam-panel.collapsed #cam-body { display: none; }
+#cam-body { padding: 2px 10px 9px; }
+#cam-body label {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 1px 6px;
+  color: #8b97ad; letter-spacing: 0.02em;
+  margin-bottom: 6px;
+}
+/* compact one-line read-out for the gesture-driven az/el/dist values */
+#cam-readout {
+  display: flex; justify-content: space-between; gap: 8px;
+  margin: 1px 0 7px;
+  color: #8b97ad; font-size: 11px; letter-spacing: 0.02em;
+}
+#cam-readout output { color: #8fb0ff; font-variant-numeric: tabular-nums; }
+#cam-body output {
+  font-variant-numeric: tabular-nums;
+  color: #8fb0ff; text-align: right;
+}
+#cam-body input[type="range"] {
+  grid-column: 1 / -1;
+  width: 100%; accent-color: #5b8cff; margin: 0;
+}
+#cam-body select {
+  grid-column: 1 / -1;
+  width: 100%; margin-top: 2px;
+  background: #121a2e; color: #cdd6e4;
+  border: 1px solid #2c3a5c; border-radius: 6px;
+  padding: 4px 6px; font-size: 13px; cursor: pointer;
+}
+#cam-reset {
+  width: 100%;
+  margin-top: 2px;
+  background: #16203a; color: #cdd6e4;
+  border: 1px solid #2c3a5c; border-radius: 6px;
+  padding: 6px; cursor: pointer; font-size: 12px;
+}
+#cam-reset:hover { background: #1b2438; border-color: #5b8cff; }

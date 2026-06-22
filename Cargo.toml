@@ -1,0 +1,31 @@
+[package]
+name = "cascade-ca"
+version = "0.1.0"
+edition = "2021"
+description = "Three stacked cellular automata (Rule 30 -> Game of Life -> 3D CA) rendered with WebGPU"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+bytemuck = { version = "1", features = ["derive"] }
+glam = "0.30"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wgpu = "25"
+wasm-bindgen = "=0.2.123"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+console_error_panic_hook = "0.1"
+web-sys = { version = "0.3", features = [
+    "Window",
+    "Document",
+    "Element",
+    "HtmlCanvasElement",
+    "Performance",
+    "console",
+] }
+
+[profile.release]
+opt-level = 3
+lto = true

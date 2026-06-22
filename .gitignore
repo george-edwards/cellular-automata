@@ -1,0 +1,19 @@
+# Rust build output
+/target
+**/*.rs.bk
+*.pdb
+
+# Generated WASM bindings (produced by build.sh via wasm-bindgen)
+/web/pkg
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini
