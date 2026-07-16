@@ -1,0 +1,29 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}   # lets you trigger a deploy manually from the Actions tab
+
+# Only one deploy at a time; a newer push cancels an in-flight run.
+concurrency:
+  group: deploy-automata
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, jellyfin]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build wasm + assemble web/
+        run: |
+          # The runner service often has a minimal PATH; pull in the Rust toolchain.
+          source "$HOME/.cargo/env"
+          ./build.sh
+
+      - name: Deploy to nginx web root
+        run: |
+          rsync -a --delete web/ /var/www/automata/web/
+          echo "Deployed $(git rev-parse --short HEAD) to /var/www/automata/web"
