@@ -59,6 +59,13 @@ button, input, select { font: inherit; }
   --ca3d-tint: 1.1 0.95 0.9;
   --ca3d-ambient: 0.55;
   --depth-cue: 0.03;
+
+  /* pointer: black edge, white ring, accent fill. The stock pointer
+     vanishes into Rule 30, which every theme draws in near-black and
+     near-white. */
+  --cursor-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='-2 -2 28 28'%3E%3Cg stroke-linejoin='round'%3E%3Cpath d='M3.5 2.5v17l4.6-4.3 3 6.8 3.2-1.4-3-6.7h6.4z' fill='none' stroke='%23000' stroke-width='4.5'/%3E%3Cpath d='M3.5 2.5v17l4.6-4.3 3 6.8 3.2-1.4-3-6.7h6.4z' fill='none' stroke='%23fff' stroke-width='2.2'/%3E%3Cpath d='M3.5 2.5v17l4.6-4.3 3 6.8 3.2-1.4-3-6.7h6.4z' fill='%23b8352a'/%3E%3C/g%3E%3C/svg%3E") 6 5, default;
+  --cursor-resize: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='-2 -2 28 28'%3E%3Cg stroke-linejoin='round'%3E%3Cpath d='M12 1 6.5 7.5H10v3H3v3h7v3H6.5L12 23l5.5-6.5H14v-3h7v-3h-7v-3h3.5z' fill='none' stroke='%23000' stroke-width='4.5'/%3E%3Cpath d='M12 1 6.5 7.5H10v3H3v3h7v3H6.5L12 23l5.5-6.5H14v-3h7v-3h-7v-3h3.5z' fill='none' stroke='%23fff' stroke-width='2.2'/%3E%3Cpath d='M12 1 6.5 7.5H10v3H3v3h7v3H6.5L12 23l5.5-6.5H14v-3h7v-3h-7v-3h3.5z' fill='%23b8352a'/%3E%3C/g%3E%3C/svg%3E") 16 16, row-resize;
+  --cursor-move: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='-2 -2 28 28'%3E%3Cg stroke-linejoin='round'%3E%3Cpath d='M12 1 7.5 6H10v4H6V7.5L1 12l5 4.5V14h4v4H7.5l4.5 5 4.5-5H14v-4h4v2.5l5-4.5-5-4.5V10h-4V6h2.5z' fill='none' stroke='%23000' stroke-width='4.5'/%3E%3Cpath d='M12 1 7.5 6H10v4H6V7.5L1 12l5 4.5V14h4v4H7.5l4.5 5 4.5-5H14v-4h4v2.5l5-4.5-5-4.5V10h-4V6h2.5z' fill='none' stroke='%23fff' stroke-width='2.2'/%3E%3Cpath d='M12 1 7.5 6H10v4H6V7.5L1 12l5 4.5V14h4v4H7.5l4.5 5 4.5-5H14v-4h4v2.5l5-4.5-5-4.5V10h-4V6h2.5z' fill='%23b8352a'/%3E%3C/g%3E%3C/svg%3E") 16 16, grabbing;
 }
 
 /* Blackboard: chalk on green-black slate (default dark) */
@@ -89,6 +96,13 @@ button, input, select { font: inherit; }
   --ca3d-tint: 0.85 0.95 1.15;
   --ca3d-ambient: 0.42;
   --depth-cue: 0.08;
+
+  /* pointer: black edge, white ring, accent fill. The stock pointer
+     vanishes into Rule 30, which every theme draws in near-black and
+     near-white. */
+  --cursor-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='-2 -2 28 28'%3E%3Cg stroke-linejoin='round'%3E%3Cpath d='M3.5 2.5v17l4.6-4.3 3 6.8 3.2-1.4-3-6.7h6.4z' fill='none' stroke='%23000' stroke-width='4.5'/%3E%3Cpath d='M3.5 2.5v17l4.6-4.3 3 6.8 3.2-1.4-3-6.7h6.4z' fill='none' stroke='%23fff' stroke-width='2.2'/%3E%3Cpath d='M3.5 2.5v17l4.6-4.3 3 6.8 3.2-1.4-3-6.7h6.4z' fill='%23f2d46b'/%3E%3C/g%3E%3C/svg%3E") 6 5, default;
+  --cursor-resize: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='-2 -2 28 28'%3E%3Cg stroke-linejoin='round'%3E%3Cpath d='M12 1 6.5 7.5H10v3H3v3h7v3H6.5L12 23l5.5-6.5H14v-3h7v-3h-7v-3h3.5z' fill='none' stroke='%23000' stroke-width='4.5'/%3E%3Cpath d='M12 1 6.5 7.5H10v3H3v3h7v3H6.5L12 23l5.5-6.5H14v-3h7v-3h-7v-3h3.5z' fill='none' stroke='%23fff' stroke-width='2.2'/%3E%3Cpath d='M12 1 6.5 7.5H10v3H3v3h7v3H6.5L12 23l5.5-6.5H14v-3h7v-3h-7v-3h3.5z' fill='%23f2d46b'/%3E%3C/g%3E%3C/svg%3E") 16 16, row-resize;
+  --cursor-move: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='-2 -2 28 28'%3E%3Cg stroke-linejoin='round'%3E%3Cpath d='M12 1 7.5 6H10v4H6V7.5L1 12l5 4.5V14h4v4H7.5l4.5 5 4.5-5H14v-4h4v2.5l5-4.5-5-4.5V10h-4V6h2.5z' fill='none' stroke='%23000' stroke-width='4.5'/%3E%3Cpath d='M12 1 7.5 6H10v4H6V7.5L1 12l5 4.5V14h4v4H7.5l4.5 5 4.5-5H14v-4h4v2.5l5-4.5-5-4.5V10h-4V6h2.5z' fill='none' stroke='%23fff' stroke-width='2.2'/%3E%3Cpath d='M12 1 7.5 6H10v4H6V7.5L1 12l5 4.5V14h4v4H7.5l4.5 5 4.5-5H14v-4h4v2.5l5-4.5-5-4.5V10h-4V6h2.5z' fill='%23f2d46b'/%3E%3C/g%3E%3C/svg%3E") 16 16, grabbing;
 }
 
 /* Go board: Conway first ran Life by hand with stones on a Go board */
@@ -119,6 +133,13 @@ button, input, select { font: inherit; }
   --ca3d-tint: 1.0 0.97 0.92;
   --ca3d-ambient: 0.45;
   --depth-cue: 0.04;
+
+  /* pointer: black edge, white ring, accent fill. The stock pointer
+     vanishes into Rule 30, which every theme draws in near-black and
+     near-white. */
+  --cursor-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='-2 -2 28 28'%3E%3Cg stroke-linejoin='round'%3E%3Cpath d='M3.5 2.5v17l4.6-4.3 3 6.8 3.2-1.4-3-6.7h6.4z' fill='none' stroke='%23000' stroke-width='4.5'/%3E%3Cpath d='M3.5 2.5v17l4.6-4.3 3 6.8 3.2-1.4-3-6.7h6.4z' fill='none' stroke='%23fff' stroke-width='2.2'/%3E%3Cpath d='M3.5 2.5v17l4.6-4.3 3 6.8 3.2-1.4-3-6.7h6.4z' fill='%237a2219'/%3E%3C/g%3E%3C/svg%3E") 6 5, default;
+  --cursor-resize: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='-2 -2 28 28'%3E%3Cg stroke-linejoin='round'%3E%3Cpath d='M12 1 6.5 7.5H10v3H3v3h7v3H6.5L12 23l5.5-6.5H14v-3h7v-3h-7v-3h3.5z' fill='none' stroke='%23000' stroke-width='4.5'/%3E%3Cpath d='M12 1 6.5 7.5H10v3H3v3h7v3H6.5L12 23l5.5-6.5H14v-3h7v-3h-7v-3h3.5z' fill='none' stroke='%23fff' stroke-width='2.2'/%3E%3Cpath d='M12 1 6.5 7.5H10v3H3v3h7v3H6.5L12 23l5.5-6.5H14v-3h7v-3h-7v-3h3.5z' fill='%237a2219'/%3E%3C/g%3E%3C/svg%3E") 16 16, row-resize;
+  --cursor-move: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='-2 -2 28 28'%3E%3Cg stroke-linejoin='round'%3E%3Cpath d='M12 1 7.5 6H10v4H6V7.5L1 12l5 4.5V14h4v4H7.5l4.5 5 4.5-5H14v-4h4v2.5l5-4.5-5-4.5V10h-4V6h2.5z' fill='none' stroke='%23000' stroke-width='4.5'/%3E%3Cpath d='M12 1 7.5 6H10v4H6V7.5L1 12l5 4.5V14h4v4H7.5l4.5 5 4.5-5H14v-4h4v2.5l5-4.5-5-4.5V10h-4V6h2.5z' fill='none' stroke='%23fff' stroke-width='2.2'/%3E%3Cpath d='M12 1 7.5 6H10v4H6V7.5L1 12l5 4.5V14h4v4H7.5l4.5 5 4.5-5H14v-4h4v2.5l5-4.5-5-4.5V10h-4V6h2.5z' fill='%237a2219'/%3E%3C/g%3E%3C/svg%3E") 16 16, grabbing;
 }
 
 /* Cyanotype: white lines on Prussian blue, like an engineering blueprint */
@@ -149,6 +170,13 @@ button, input, select { font: inherit; }
   --ca3d-tint: 0.85 0.95 1.1;
   --ca3d-ambient: 0.4;
   --depth-cue: 0.08;
+
+  /* pointer: black edge, white ring, accent fill. The stock pointer
+     vanishes into Rule 30, which every theme draws in near-black and
+     near-white. */
+  --cursor-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='-2 -2 28 28'%3E%3Cg stroke-linejoin='round'%3E%3Cpath d='M3.5 2.5v17l4.6-4.3 3 6.8 3.2-1.4-3-6.7h6.4z' fill='none' stroke='%23000' stroke-width='4.5'/%3E%3Cpath d='M3.5 2.5v17l4.6-4.3 3 6.8 3.2-1.4-3-6.7h6.4z' fill='none' stroke='%23fff' stroke-width='2.2'/%3E%3Cpath d='M3.5 2.5v17l4.6-4.3 3 6.8 3.2-1.4-3-6.7h6.4z' fill='%239fdcf5'/%3E%3C/g%3E%3C/svg%3E") 6 5, default;
+  --cursor-resize: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='-2 -2 28 28'%3E%3Cg stroke-linejoin='round'%3E%3Cpath d='M12 1 6.5 7.5H10v3H3v3h7v3H6.5L12 23l5.5-6.5H14v-3h7v-3h-7v-3h3.5z' fill='none' stroke='%23000' stroke-width='4.5'/%3E%3Cpath d='M12 1 6.5 7.5H10v3H3v3h7v3H6.5L12 23l5.5-6.5H14v-3h7v-3h-7v-3h3.5z' fill='none' stroke='%23fff' stroke-width='2.2'/%3E%3Cpath d='M12 1 6.5 7.5H10v3H3v3h7v3H6.5L12 23l5.5-6.5H14v-3h7v-3h-7v-3h3.5z' fill='%239fdcf5'/%3E%3C/g%3E%3C/svg%3E") 16 16, row-resize;
+  --cursor-move: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='-2 -2 28 28'%3E%3Cg stroke-linejoin='round'%3E%3Cpath d='M12 1 7.5 6H10v4H6V7.5L1 12l5 4.5V14h4v4H7.5l4.5 5 4.5-5H14v-4h4v2.5l5-4.5-5-4.5V10h-4V6h2.5z' fill='none' stroke='%23000' stroke-width='4.5'/%3E%3Cpath d='M12 1 7.5 6H10v4H6V7.5L1 12l5 4.5V14h4v4H7.5l4.5 5 4.5-5H14v-4h4v2.5l5-4.5-5-4.5V10h-4V6h2.5z' fill='none' stroke='%23fff' stroke-width='2.2'/%3E%3Cpath d='M12 1 7.5 6H10v4H6V7.5L1 12l5 4.5V14h4v4H7.5l4.5 5 4.5-5H14v-4h4v2.5l5-4.5-5-4.5V10h-4V6h2.5z' fill='%239fdcf5'/%3E%3C/g%3E%3C/svg%3E") 16 16, grabbing;
 }
 
 /* ---- type ----
@@ -161,6 +189,7 @@ button, input, select { font: inherit; }
 
 html, body {
   width: 100%; height: 100%;
+  cursor: var(--cursor-arrow);
   overflow: hidden;
   background: var(--bg);
   font-family: var(--font-ui);
@@ -179,7 +208,8 @@ html, body {
      than scrolling or page-zooming on mobile */
   touch-action: none;
 }
-#ca-canvas.orbiting { cursor: grabbing; }
+#ca-canvas { cursor: var(--cursor-arrow); }
+#ca-canvas.orbiting { cursor: var(--cursor-move); }
 
 /* ---- top stack: control bar + camera panel, centered under each other ---- */
 #top-stack {
@@ -271,7 +301,7 @@ html, body {
 .handle {
   position: fixed; left: 0; width: 100%;
   height: 18px; margin-top: -9px;
-  cursor: row-resize;
+  cursor: var(--cursor-resize);
   z-index: 15;
   /* let the vertical drag move the handle instead of being stolen for
      page-scrolling on touch (which cancelled the drag after a few pixels) */
