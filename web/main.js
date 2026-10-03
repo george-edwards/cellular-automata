@@ -37,16 +37,17 @@ function setPlayIcon() {
 // The tokens for each theme live in style.css under [data-theme="…"]; the
 // inline script in index.html applies the saved choice before first paint.
 
+const DEFAULT_THEME = "original"; // keep in step with the inline script in index.html
 const THEMES = [
+  { id: "original", label: "Original" },
   { id: "system", label: "Match system" },
   { id: "graph", label: "Graph paper" },
   { id: "blackboard", label: "Blackboard" },
   { id: "go", label: "Go board" },
   { id: "cyanotype", label: "Cyanotype" },
-  { id: "original", label: "Original" },
 ];
 const darkQuery = matchMedia("(prefers-color-scheme: dark)");
-let themePref = "system";
+let themePref = DEFAULT_THEME;
 let wasmReady = false;
 
 function resolveTheme(pref) {
@@ -84,7 +85,7 @@ function applyCanvasPalette() {
 }
 
 function applyTheme(pref) {
-  themePref = THEMES.some((t) => t.id === pref) ? pref : "system";
+  themePref = THEMES.some((t) => t.id === pref) ? pref : DEFAULT_THEME;
   try { localStorage.setItem("theme", themePref); } catch { /* private mode */ }
   const id = resolveTheme(themePref);
   document.documentElement.dataset.theme = id;
@@ -107,7 +108,7 @@ function setThemeMenu(open) {
 }
 
 function setupThemes() {
-  try { themePref = localStorage.getItem("theme") || "system"; } catch { /* private mode */ }
+  try { themePref = localStorage.getItem("theme") || DEFAULT_THEME; } catch { /* private mode */ }
   const menu = $("theme-menu");
   for (const t of THEMES) {
     const b = el("button", "", gliderSwatch(resolveTheme(t.id)), t.label);
