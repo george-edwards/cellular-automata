@@ -179,6 +179,43 @@ button, input, select { font: inherit; }
   --cursor-move: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='-2 -2 28 28'%3E%3Cg stroke-linejoin='round'%3E%3Cpath d='M12 1 7.5 6H10v4H6V7.5L1 12l5 4.5V14h4v4H7.5l4.5 5 4.5-5H14v-4h4v2.5l5-4.5-5-4.5V10h-4V6h2.5z' fill='none' stroke='%23000' stroke-width='4.5'/%3E%3Cpath d='M12 1 7.5 6H10v4H6V7.5L1 12l5 4.5V14h4v4H7.5l4.5 5 4.5-5H14v-4h4v2.5l5-4.5-5-4.5V10h-4V6h2.5z' fill='none' stroke='%23fff' stroke-width='2.2'/%3E%3Cpath d='M12 1 7.5 6H10v4H6V7.5L1 12l5 4.5V14h4v4H7.5l4.5 5 4.5-5H14v-4h4v2.5l5-4.5-5-4.5V10h-4V6h2.5z' fill='%239fdcf5'/%3E%3C/g%3E%3C/svg%3E") 16 16, grabbing;
 }
 
+/* Original: the app's first look — amber, mint and gold on deep navy */
+[data-theme="original"] {
+  color-scheme: dark;
+  --bg: #04060d;
+  --surface: #0a0e1ad1;
+  --surface-solid: #0d1322;
+  --raised: #16203a;
+  --border: #2c3a5c;
+  --line: #2a3551;
+  --text: #cdd6e4;
+  --text-muted: #8b97ad;
+  --text-faint: #76849c;
+  --accent: #5b8cff;
+  --accent-ink: #04060d;
+  --link: #8fb0ff;
+  --backdrop: #02040a99;
+
+  --cell-off: #28324f;      --cell-off-edge: #44537a;
+  --cell-count: #34508c;    --cell-count-edge: #5b7fc8;
+  --cell-gone: #161d31;     --cell-gone-edge: #313c5c;
+
+  --canvas-3d: #030409;
+  --r30-bg: #040408;  --r30-cell: #ffb847;  --r30-trail: #1a0d08;
+  --gol-bg: #030609;  --gol-cell: #73ffb8;  --gol-trail: #0d474c;
+  --ca3d-cell: #ffdb80; --ca3d-fade-a: #ed594c; --ca3d-fade-b: #4c1f73;
+  --ca3d-tint: 0.55 0.8 1.45;
+  --ca3d-ambient: 0.35;
+  --depth-cue: 0.1;
+
+  /* pointer: black edge, white ring, accent fill. The stock pointer
+     vanishes into Rule 30, which every theme draws in near-black and
+     near-white. */
+  --cursor-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='-2 -2 28 28'%3E%3Cg stroke-linejoin='round'%3E%3Cpath d='M3.5 2.5v17l4.6-4.3 3 6.8 3.2-1.4-3-6.7h6.4z' fill='none' stroke='%23000' stroke-width='4.5'/%3E%3Cpath d='M3.5 2.5v17l4.6-4.3 3 6.8 3.2-1.4-3-6.7h6.4z' fill='none' stroke='%23fff' stroke-width='2.2'/%3E%3Cpath d='M3.5 2.5v17l4.6-4.3 3 6.8 3.2-1.4-3-6.7h6.4z' fill='%235b8cff'/%3E%3C/g%3E%3C/svg%3E") 6 5, default;
+  --cursor-resize: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='-2 -2 28 28'%3E%3Cg stroke-linejoin='round'%3E%3Cpath d='M12 1 6.5 7.5H10v3H3v3h7v3H6.5L12 23l5.5-6.5H14v-3h7v-3h-7v-3h3.5z' fill='none' stroke='%23000' stroke-width='4.5'/%3E%3Cpath d='M12 1 6.5 7.5H10v3H3v3h7v3H6.5L12 23l5.5-6.5H14v-3h7v-3h-7v-3h3.5z' fill='none' stroke='%23fff' stroke-width='2.2'/%3E%3Cpath d='M12 1 6.5 7.5H10v3H3v3h7v3H6.5L12 23l5.5-6.5H14v-3h7v-3h-7v-3h3.5z' fill='%235b8cff'/%3E%3C/g%3E%3C/svg%3E") 16 16, row-resize;
+  --cursor-move: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='-2 -2 28 28'%3E%3Cg stroke-linejoin='round'%3E%3Cpath d='M12 1 7.5 6H10v4H6V7.5L1 12l5 4.5V14h4v4H7.5l4.5 5 4.5-5H14v-4h4v2.5l5-4.5-5-4.5V10h-4V6h2.5z' fill='none' stroke='%23000' stroke-width='4.5'/%3E%3Cpath d='M12 1 7.5 6H10v4H6V7.5L1 12l5 4.5V14h4v4H7.5l4.5 5 4.5-5H14v-4h4v2.5l5-4.5-5-4.5V10h-4V6h2.5z' fill='none' stroke='%23fff' stroke-width='2.2'/%3E%3Cpath d='M12 1 7.5 6H10v4H6V7.5L1 12l5 4.5V14h4v4H7.5l4.5 5 4.5-5H14v-4h4v2.5l5-4.5-5-4.5V10h-4V6h2.5z' fill='%235b8cff'/%3E%3C/g%3E%3C/svg%3E") 16 16, grabbing;
+}
+
 /* ---- type ----
    Plex Mono for everything the machine says (controls, read-outs, captions);
    Newsreader for the prose in the explainers. */

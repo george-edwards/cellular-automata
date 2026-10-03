@@ -43,6 +43,7 @@ const THEMES = [
   { id: "blackboard", label: "Blackboard" },
   { id: "go", label: "Go board" },
   { id: "cyanotype", label: "Cyanotype" },
+  { id: "original", label: "Original" },
 ];
 const darkQuery = matchMedia("(prefers-color-scheme: dark)");
 let themePref = "system";
