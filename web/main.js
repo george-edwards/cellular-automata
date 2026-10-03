@@ -3,6 +3,7 @@ import init, * as wasm from "./pkg/cascade_ca.js";
 const $ = (id) => document.getElementById(id);
 
 function showError(detail) {
+  $("loading").classList.add("hidden");
   $("error").classList.remove("hidden");
   if (detail) $("error-detail").textContent = String(detail);
 }
@@ -12,14 +13,24 @@ function layoutOverlays() {
   const [b1, b2] = wasm.boundaries();
   $("handle1").style.top = `${b1 * h}px`;
   $("handle2").style.top = `${b2 * h}px`;
-  // one info button near the top-right of each region
+  // position as a percentage of the height, for assistive tech
+  $("handle1").setAttribute("aria-valuenow", Math.round(b1 * 100));
+  $("handle2").setAttribute("aria-valuenow", Math.round(b2 * 100));
+  // one info button near the top-right of each region, always kept clear of
+  // the transport bar even when the Rule 30 band is dragged very short
+  const btnH = $("info2").offsetHeight || 44;
+  const maxTop = $("controls").getBoundingClientRect().top - btnH - 8;
   $("info0").style.top = "12px";
   $("info1").style.top = `${b1 * h + 10}px`;
-  $("info2").style.top = `${b2 * h + 10}px`;
+  $("info2").style.top = `${Math.min(b2 * h + 10, maxTop)}px`;
 }
 
 function setPlayIcon() {
-  $("btn-play").textContent = wasm.is_paused() ? "▶" : "⏸";
+  const paused = wasm.is_paused();
+  const btn = $("btn-play");
+  btn.querySelector("use").setAttribute("href", paused ? "#i-play" : "#i-pause");
+  btn.setAttribute("aria-label", paused ? "Play" : "Pause");
+  btn.title = paused ? "Play (Space)" : "Pause (Space)";
 }
 
 // ---------- colour themes ----------
@@ -217,6 +228,8 @@ function photoFigure(src, alt, captionHtml) {
   const img = el("img");
   img.src = src;
   img.alt = alt;
+  img.loading = "lazy";
+  img.decoding = "async";
   fig.append(img);
   if (captionHtml) {
     const cap = el("figcaption");
@@ -539,8 +552,9 @@ const contentCache = {};
 async function loadContent() {
   await Promise.all(Object.entries(CONTENT_FILES).map(async ([region, name]) => {
     try {
-      // cache-bust so edits to the .md files show on a normal reload
-      const res = await fetch(`content/${name}.md?t=${Date.now()}`, { cache: "no-store" });
+      // revalidate every load (a cheap 304 when unchanged) so edits to the
+      // .md files still show on a normal reload
+      const res = await fetch(`content/${name}.md`, { cache: "no-cache" });
       contentCache[region] = res.ok ? await res.text() : null;
     } catch {
       contentCache[region] = null;
@@ -560,15 +574,29 @@ function openInfo(region) {
     $("modal-title").textContent = title || "";
     $("modal-body").replaceChildren(body);
   }
-  $("modal-backdrop").classList.remove("hidden");
+  // showModal traps focus inside, makes the page behind inert, closes on
+  // Escape, and hands focus back to the opening button on close
+  const modal = $("modal");
+  if (!modal.open) modal.showModal();
+  modal.scrollTop = 0;
 }
 
 function closeInfo() {
-  golStopBoards();
-  $("modal-backdrop").classList.add("hidden");
+  if ($("modal").open) $("modal").close(); // the "close" handler stops the demos
 }
 
 function setupDrag(handleEl, which) {
+  // ↑/↓ nudge the boundary by 2% of the height (Shift: 10%)
+  handleEl.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    e.preventDefault();
+    e.stopPropagation();
+    const step = (e.shiftKey ? 0.1 : 0.02) * (e.key === "ArrowUp" ? -1 : 1);
+    let [b1, b2] = wasm.boundaries();
+    if (which === 1) b1 += step; else b2 += step;
+    wasm.set_boundaries(b1, b2);
+    layoutOverlays();
+  });
   handleEl.addEventListener("pointerdown", (e) => {
     e.preventDefault();
     handleEl.setPointerCapture(e.pointerId);
@@ -621,7 +649,10 @@ function setupCamera() {
   };
   inp.ty.addEventListener("input", onSlider);
   inp.fov.addEventListener("input", onSlider);
-  $("cam-head").addEventListener("click", () => $("cam-panel").classList.toggle("collapsed"));
+  $("cam-head").addEventListener("click", () => {
+    const collapsed = $("cam-panel").classList.toggle("collapsed");
+    $("cam-head").setAttribute("aria-expanded", String(!collapsed));
+  });
   $("cam-reset").addEventListener("click", () => setAll(wasm.camera_defaults()));
 
   setAll(wasm.camera_values());
@@ -742,7 +773,9 @@ async function main() {
   }
   if (status.software) {
     if (status.info) $("warn-info").textContent = `Renderer: ${status.info}`;
+    $("loading").classList.add("hidden");
     $("warn-software").classList.remove("hidden");
+    $("warn-proceed").focus();
     $("warn-proceed").addEventListener("click", () => {
       $("warn-software").classList.add("hidden");
       boot();
@@ -765,6 +798,7 @@ async function boot() {
   }
   wasmReady = true;
   applyCanvasPalette();
+  $("loading").classList.add("hidden");
 
   // presets
   const sel = $("preset");
@@ -789,7 +823,10 @@ async function boot() {
 
   // keyboard
   window.addEventListener("keydown", (e) => {
-    if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+    // leave keys alone in form fields and while the explainer is open, and
+    // let Space press whichever button has focus
+    if (e.target.closest("input, select, textarea, dialog")) return;
+    if (e.code === "Space" && e.target.closest("button, [role=separator]")) return;
     switch (e.code) {
       case "Space":
         e.preventDefault();
@@ -809,8 +846,10 @@ async function boot() {
         setPlayIcon();
         break;
       case "Escape":
-        closeInfo();
-        setThemeMenu(false);
+        if (!$("theme-menu").classList.contains("hidden")) {
+          setThemeMenu(false);
+          $("theme-btn").focus();
+        }
         break;
     }
   });
@@ -820,9 +859,15 @@ async function boot() {
   for (const region of [0, 1, 2]) {
     $(`info${region}`).addEventListener("click", () => openInfo(region));
   }
+  const modal = $("modal");
   $("modal-close").addEventListener("click", closeInfo);
-  $("modal-backdrop").addEventListener("click", (e) => {
-    if (e.target.id === "modal-backdrop") closeInfo();
+  modal.addEventListener("close", golStopBoards);
+  // a click on the dimmed backdrop lands on the <dialog> itself, outside its box
+  modal.addEventListener("click", (e) => {
+    if (e.target !== modal) return;
+    const r = modal.getBoundingClientRect();
+    const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+    if (!inside) closeInfo();
   });
 
   // draggable region boundaries

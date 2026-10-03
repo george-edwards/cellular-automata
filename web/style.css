@@ -1,6 +1,27 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 button, input, select { font: inherit; }
 
+/* one focus ring for everything, shown for keyboard focus only */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+
+.icon {
+  width: 18px; height: 18px; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+  vertical-align: middle;
+}
+
+#loading {
+  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  font-size: 13px; color: var(--text-muted);
+  z-index: 5;
+}
+
 /* ======================================================================
    Themes
    Each theme is one block of tokens. The UI reads the plain tokens; the
@@ -81,14 +102,14 @@ button, input, select { font: inherit; }
   --line: #a17c40;
   --text: #2a1f14;
   --text-muted: #57432d;
-  --text-faint: #6b5539;
-  --accent: #8e2a1f;
+  --text-faint: #574330;
+  --accent: #7a2219;
   --accent-ink: #fbf3e3;
-  --link: #8e2a1f;
+  --link: #7a2219;
   --backdrop: #2a1f1466;
 
   --cell-off: #cfa564;      --cell-off-edge: #b08848;
-  --cell-count: #e9dcc0;    --cell-count-edge: #6b5539;
+  --cell-count: #e9dcc0;    --cell-count-edge: #574330;
   --cell-gone: #d8b77e;     --cell-gone-edge: #c19a5c;
 
   --canvas-3d: #dcb87c;
@@ -186,9 +207,11 @@ html, body {
   user-select: none;
 }
 #controls button {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 32px; min-height: 32px;
   background: none; border: 1px solid transparent; border-radius: 3px;
-  color: var(--text); font-size: 16px; line-height: 1;
-  padding: 6px 6px; cursor: pointer;
+  color: var(--text); font-size: 13px; line-height: 1;
+  padding: 6px; cursor: pointer;
 }
 #controls button:hover { background: var(--raised); border-color: var(--border); }
 #controls .sep { width: 1px; height: 20px; background: var(--border); }
@@ -262,43 +285,55 @@ html, body {
   background: var(--line);
   transition: background 0.15s, height 0.15s;
 }
-.handle:hover::after, .handle.dragging::after {
+.handle:focus-visible { outline: none; }
+.handle:hover::after, .handle.dragging::after, .handle:focus-visible::after {
   background: var(--accent);
   height: 3px;
 }
 
-/* ---- per-region info buttons ---- */
+/* ---- per-region info buttons: name the band and open its explainer ----
+   Solid accent with a two-tone ring (surface, then a darker edge) so they
+   stand out over any cell pattern, light or dark, in every theme. */
 .info-btn {
   position: fixed; right: 16px;
-  width: 36px; height: 36px;
-  border-radius: 50%;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--accent);
-  font: italic 600 20px/1 var(--font-prose);
+  display: flex; align-items: center; gap: 7px;
+  min-height: 36px;
+  padding: 0 12px 0 9px;
+  border-radius: 4px;
+  border: 2px solid var(--surface-solid);
+  box-shadow: 0 0 0 1px var(--text-muted);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 12px; font-weight: 600;
   cursor: pointer;
   z-index: 18;
-  backdrop-filter: blur(6px);
-  transition: border-color 0.12s, background 0.12s;
 }
-.info-btn:hover { border-color: var(--accent); background: var(--surface-solid); }
+.info-btn:hover { filter: brightness(1.12); }
+.info-btn:focus-visible { outline-offset: 3px; }
+/* on narrow screens the top label would run into the 3D panel: icon only */
+@media (max-width: 560px) {
+  .info-btn { padding: 0; width: 36px; justify-content: center; }
+  .info-label { display: none; }
+}
 
-/* ---- info modal ---- */
-#modal-backdrop {
-  position: fixed; inset: 0;
-  background: var(--backdrop);
-  display: flex; align-items: center; justify-content: center;
-  z-index: 30;
-}
+/* ---- info modal (a native <dialog>, opened with showModal) ---- */
 #modal {
-  position: relative;
-  max-width: 38rem; margin: 16px;
+  width: min(38rem, calc(100vw - 32px));
   max-height: calc(100dvh - 32px);
+  margin: auto;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--border) transparent;
   background: var(--surface-solid);
+  color: var(--text);
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 28px 32px 24px;
+}
+#modal::backdrop { background: var(--backdrop); }
+@media (max-width: 480px) {
+  #modal { padding: 22px 18px 18px; }
+  #modal h2 { font-size: 25px; }
 }
 #modal h2 {
   font: 600 30px/1.15 var(--font-prose);
@@ -415,9 +450,10 @@ html, body {
 .layers { display: flex; gap: 14px; align-items: flex-end; }
 #modal-close {
   position: absolute; top: 12px; right: 14px;
-  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px;
   background: none; border: 1px solid transparent; border-radius: 3px;
-  color: var(--text-muted); font-size: 22px; line-height: 1; cursor: pointer;
+  color: var(--text-muted); cursor: pointer;
 }
 #modal-close:hover { color: var(--text); border-color: var(--border); }
 
@@ -433,6 +469,7 @@ html, body {
 }
 .overlay-box { max-width: 540px; }
 .overlay h2 { font: 600 26px/1.2 var(--font-prose); margin-bottom: 12px; }
+.overlay h2 .icon { width: 24px; height: 24px; color: var(--accent); vertical-align: -3px; }
 .overlay p {
   font: 16px/1.55 var(--font-prose);
   color: var(--text-muted); max-width: 540px; margin-bottom: 8px;
@@ -480,11 +517,13 @@ html, body {
 }
 #cam-head {
   display: flex; justify-content: space-between; align-items: center;
+  width: 100%; min-height: 32px;
   padding: 6px 10px;
-  color: var(--text); font-weight: 600;
+  background: none; border: 0; border-radius: 4px;
+  color: var(--text); font-size: 12px; font-weight: 600; text-align: left;
   cursor: pointer;
 }
-#cam-caret { color: var(--text-faint); transition: transform 0.15s; }
+#cam-caret { width: 14px; height: 14px; color: var(--text-faint); transition: transform 0.15s; }
 #cam-panel.collapsed #cam-caret { transform: rotate(-90deg); }
 #cam-panel.collapsed #cam-body { display: none; }
 #cam-body { padding: 2px 10px 10px; }
@@ -526,3 +565,21 @@ html, body {
 }
 #cam-reset:hover { border-color: var(--accent); }
 @media (max-width: 480px) { .theme-label { display: none; } }
+
+/* ---- touch: fingers need 44px targets ---- */
+@media (pointer: coarse) {
+  #controls button, #cam-head, #cam-reset, #modal-close { min-height: 44px; }
+  #controls button, #modal-close { min-width: 44px; }
+  #controls { gap: 2px; padding: 3px 6px; }
+  .info-btn { min-height: 44px; }
+  /* a taller grab strip; the drawn line stays 1px */
+  .handle { height: 32px; margin-top: -16px; }
+}
+@media (pointer: coarse) and (max-width: 560px) {
+  .info-btn { width: 44px; }
+  .speed-word { display: none; } /* the slider stays; aria-label keeps its name */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; }
+}
