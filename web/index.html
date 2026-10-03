@@ -4,6 +4,21 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Automata: 1D → 2D → 3D</title>
+  <meta name="theme-color" content="#eef3f1" />
+  <!-- Resolve the theme before first paint so the page never flashes the
+       wrong colours. "system" (the default) follows the OS light/dark setting. -->
+  <script>
+    (function () {
+      var pref = "system";
+      try { pref = localStorage.getItem("theme") || "system"; } catch (e) {}
+      var dark = matchMedia("(prefers-color-scheme: dark)").matches;
+      document.documentElement.dataset.theme =
+        pref === "system" ? (dark ? "blackboard" : "graph") : pref;
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,600;1,6..72,400;1,6..72,600&display=swap" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -24,7 +39,7 @@
         </div>
         <label>target height <output id="cam-ty-v"></output>
           <input id="cam-ty" type="range" min="0" max="48" step="0.5" /></label>
-        <label>field of view <output id="cam-fov-v"></output>°
+        <label>field of view <span><output id="cam-fov-v"></output>°</span>
           <input id="cam-fov" type="range" min="20" max="90" step="1" /></label>
         <button id="cam-reset">Reset to defaults</button>
       </div>
@@ -41,6 +56,11 @@
     <label class="speed">speed
       <input id="speed" type="range" min="1" max="40" value="30" />
     </label>
+    <span class="sep"></span>
+    <div id="theme-wrap">
+      <button id="theme-btn" title="Change colour theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-menu"></button>
+      <div id="theme-menu" class="hidden" role="group" aria-label="Colour theme"></div>
+    </div>
   </div>
 
   <div id="handle1" class="handle" title="Drag to resize regions"></div>

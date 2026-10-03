@@ -1,6 +1,6 @@
 //! Wasm entry point and JS-facing API. JS owns the DOM (buttons, drag
 //! handles, modal); this side owns simulation, history and rendering.
-use crate::render::{Camera, CubeInstance, Renderer};
+use crate::render::{Camera, CubeInstance, Palette, RegionColors, Renderer};
 use crate::sim::{ca3d, Cascade, Snapshot, PRESETS_3D};
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -323,6 +323,30 @@ pub fn preset_blurb(i: usize) -> String {
 #[wasm_bindgen]
 pub fn current_preset() -> usize {
     with_app(|a| a.preset_idx).unwrap_or(0)
+}
+
+/// Canvas colours from the page theme, as a flat list of 0–1 floats:
+/// `[clear rgb, rule30 fg/bg/trail rgb, rule30 depth cue, gol fg/bg/trail rgb,
+/// gol depth cue, cube alive/fade_a/fade_b/tint rgb, cube ambient]` (36 values).
+#[wasm_bindgen]
+pub fn set_palette(v: Vec<f32>) -> Result<(), JsValue> {
+    if v.len() != 36 {
+        return Err(JsValue::from_str(&format!("set_palette: expected 36 values, got {}", v.len())));
+    }
+    let rgb = |i: usize| [v[i], v[i + 1], v[i + 2]];
+    let region = |i: usize| RegionColors { fg: rgb(i), bg: rgb(i + 3), trail: rgb(i + 6), depth_cue: v[i + 9] };
+    let palette = Palette {
+        clear: rgb(0),
+        rule30: region(3),
+        gol: region(13),
+        cube_alive: rgb(23),
+        cube_fade_a: rgb(26),
+        cube_fade_b: rgb(29),
+        cube_tint: rgb(32),
+        cube_ambient: v[35],
+    };
+    with_app(|a| a.renderer.set_palette(palette));
+    Ok(())
 }
 
 /// Returns [b1, b2] as fractions of the canvas height.

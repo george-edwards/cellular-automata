@@ -22,6 +22,99 @@ function setPlayIcon() {
   $("btn-play").textContent = wasm.is_paused() ? "▶" : "⏸";
 }
 
+// ---------- colour themes ----------
+// The tokens for each theme live in style.css under [data-theme="…"]; the
+// inline script in index.html applies the saved choice before first paint.
+
+const THEMES = [
+  { id: "system", label: "Match system" },
+  { id: "graph", label: "Graph paper" },
+  { id: "blackboard", label: "Blackboard" },
+  { id: "go", label: "Go board" },
+  { id: "cyanotype", label: "Cyanotype" },
+];
+const darkQuery = matchMedia("(prefers-color-scheme: dark)");
+let themePref = "system";
+let wasmReady = false;
+
+function resolveTheme(pref) {
+  if (pref !== "system") return pref;
+  return darkQuery.matches ? "blackboard" : "graph";
+}
+
+// A 3×3 glider in a given theme's Life colours.
+function gliderSwatch(themeId) {
+  const s = el("span", "swatch");
+  s.dataset.theme = themeId;
+  s.setAttribute("aria-hidden", "true");
+  for (const ch of ".#...####") s.append(el("i", ch === "#" ? "on" : ""));
+  return s;
+}
+
+// Read the canvas tokens off <html> and hand them to the renderer.
+function applyCanvasPalette() {
+  if (!wasmReady) return;
+  const css = getComputedStyle(document.documentElement);
+  const rgb = (name) => {
+    const hex = css.getPropertyValue(name).trim().replace("#", "");
+    return [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  };
+  const num = (name) => Number(css.getPropertyValue(name).trim());
+  const depth = num("--depth-cue");
+  wasm.set_palette(new Float32Array([
+    ...rgb("--canvas-3d"),
+    ...rgb("--r30-cell"), ...rgb("--r30-bg"), ...rgb("--r30-trail"), depth,
+    ...rgb("--gol-cell"), ...rgb("--gol-bg"), ...rgb("--gol-trail"), depth,
+    ...rgb("--ca3d-cell"), ...rgb("--ca3d-fade-a"), ...rgb("--ca3d-fade-b"),
+    ...css.getPropertyValue("--ca3d-tint").trim().split(/\s+/).map(Number),
+    num("--ca3d-ambient"),
+  ]));
+}
+
+function applyTheme(pref) {
+  themePref = THEMES.some((t) => t.id === pref) ? pref : "system";
+  try { localStorage.setItem("theme", themePref); } catch { /* private mode */ }
+  const id = resolveTheme(themePref);
+  document.documentElement.dataset.theme = id;
+  document.querySelector('meta[name="theme-color"]')
+    .setAttribute("content", getComputedStyle(document.documentElement).getPropertyValue("--bg").trim());
+
+  const label = THEMES.find((t) => t.id === themePref).label;
+  const btn = $("theme-btn");
+  btn.replaceChildren(gliderSwatch(id), el("span", "theme-label", "theme"));
+  btn.setAttribute("aria-label", `Colour theme: ${label}`);
+  for (const b of $("theme-menu").children) {
+    b.setAttribute("aria-pressed", String(b.dataset.pref === themePref));
+  }
+  applyCanvasPalette();
+}
+
+function setThemeMenu(open) {
+  $("theme-menu").classList.toggle("hidden", !open);
+  $("theme-btn").setAttribute("aria-expanded", String(open));
+}
+
+function setupThemes() {
+  try { themePref = localStorage.getItem("theme") || "system"; } catch { /* private mode */ }
+  const menu = $("theme-menu");
+  for (const t of THEMES) {
+    const b = el("button", "", gliderSwatch(resolveTheme(t.id)), t.label);
+    b.dataset.pref = t.id;
+    b.addEventListener("click", () => { applyTheme(t.id); setThemeMenu(false); });
+    menu.append(b);
+  }
+  $("theme-btn").addEventListener("click", () => setThemeMenu(menu.classList.contains("hidden")));
+  document.addEventListener("pointerdown", (e) => {
+    if (!$("theme-wrap").contains(e.target)) setThemeMenu(false);
+  });
+  darkQuery.addEventListener("change", () => {
+    // keep the "Match system" swatch and, if chosen, the page in step with the OS
+    menu.querySelector('[data-pref="system"] .swatch').dataset.theme = resolveTheme("system");
+    if (themePref === "system") applyTheme("system");
+  });
+  applyTheme(themePref);
+}
+
 // ---------- info modal content ----------
 
 function el(tag, cls, ...children) {
@@ -35,7 +128,7 @@ function el(tag, cls, ...children) {
 // 'n' highlighted as a counted neighbour, 'x' faded/gone
 function miniGrid(spec, accent) {
   const g = el("div", "mini");
-  g.style.setProperty("--accent", accent);
+  g.style.setProperty("--accent-cell", accent);
   for (const ch of spec) {
     const c = el("div", "cell");
     if (ch === "#" || ch === "@") c.classList.add("on");
@@ -49,7 +142,7 @@ function miniGrid(spec, accent) {
 
 function singleCell(on, accent, focus = false) {
   const c = el("div", "cell" + (on ? " on" : " gone") + (focus ? " focus" : ""));
-  c.style.setProperty("--accent", accent);
+  c.style.setProperty("--accent-cell", accent);
   return c;
 }
 
@@ -59,9 +152,10 @@ function figureEl(content, caption, cls = "") {
   return f;
 }
 
-const AMBER = "#ffb847";
-const MINT = "#73ffb8";
-const WARM = "#ffdb80";
+// Live-cell colours for each region's diagrams, taken from the theme.
+const AMBER = "var(--r30-cell)";
+const MINT = "var(--gol-cell)";
+const WARM = "var(--ca3d-cell)";
 
 // Actually run Rule 30 from a centred single cell: returns `gens` rows.
 function rule30Rows(width, gens) {
@@ -82,7 +176,7 @@ function rule30Rows(width, gens) {
 function pixGrid(rows, accent, px = 11) {
   const g = el("div", "pixgrid");
   g.style.gridTemplateColumns = `repeat(${rows[0].length}, ${px}px)`;
-  g.style.setProperty("--accent", accent);
+  g.style.setProperty("--accent-cell", accent);
   g.style.setProperty("--px", `${px}px`);
   for (const row of rows) {
     for (const v of row) g.append(el("div", "cell" + (v ? " on" : "")));
@@ -109,7 +203,7 @@ function rule30Cases() {
     const row = el("div", "r30row");
     for (const bit of [4, 2, 1]) {
       const c = el("div", "cell" + ((p & bit) ? " on" : ""));
-      c.style.setProperty("--accent", AMBER);
+      c.style.setProperty("--accent-cell", AMBER);
       row.append(c);
     }
     kase.append(row, el("span", "arrow", "↓"), singleCell(((30 >> p) & 1) === 1, AMBER));
@@ -173,7 +267,7 @@ function golStopBoards() {
 function golBoard(w, h, live, { px = 11, ms = 160, wrap = false, sink = false, resetEvery = 0 } = {}) {
   const grid = el("div", "pixgrid");
   grid.style.gridTemplateColumns = `repeat(${w}, ${px}px)`;
-  grid.style.setProperty("--accent", MINT);
+  grid.style.setProperty("--accent-cell", MINT);
   grid.style.setProperty("--px", `${px}px`);
   const divs = [];
   for (let i = 0; i < w * h; i++) {
@@ -355,8 +449,7 @@ function ca3dContent() {
     for (let s = 0; s < Math.min(nStates - 2, 8); s++) {
       const t = s / Math.max(nStates - 3, 1);
       const c = el("div", "cell");
-      const lerp = (a, b) => Math.round(a + (b - a) * t);
-      c.style.background = `rgb(${lerp(238, 77)}, ${lerp(89, 31)}, ${lerp(76, 115)})`;
+      c.style.background = `color-mix(in srgb, var(--ca3d-fade-a), var(--ca3d-fade-b) ${Math.round(t * 100)}%)`;
       strip.append(c);
     }
     strip.append(el("span", "lbl", "fading"), singleCell(false, WARM), el("span", "lbl", "gone"));
@@ -641,6 +734,7 @@ async function inspectAdapter() {
 }
 
 async function main() {
+  setupThemes();
   const status = await inspectAdapter();
   if (!status.ok) {
     showError(status.detail);
@@ -669,6 +763,8 @@ async function boot() {
     showError(e);
     return;
   }
+  wasmReady = true;
+  applyCanvasPalette();
 
   // presets
   const sel = $("preset");
@@ -714,6 +810,7 @@ async function boot() {
         break;
       case "Escape":
         closeInfo();
+        setThemeMenu(false);
         break;
     }
   });

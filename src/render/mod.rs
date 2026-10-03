@@ -42,8 +42,9 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
     } else {
         col = mix(u.bg.rgb, u.trail.rgb, v * v);
     }
-    // subtle vertical depth cue, brighter towards the bottom of each region
-    col *= 0.9 + 0.1 * in.uv.y;
+    // subtle vertical depth cue, brighter towards the bottom of each region;
+    // misc.x is its strength (themes on light paper turn it down)
+    col *= 1.0 - u.misc.x * (1.0 - in.uv.y);
     return vec4f(col, 1.0);
 }
 "#;
@@ -53,6 +54,10 @@ struct U3 {
     view_proj: mat4x4f,
     light: vec4f,   // xyz = direction, w = ambient
     grid: vec4f,    // X, Y, Z, states
+    alive: vec4f,   // colour of live cells
+    fade_a: vec4f,  // first fading state ...
+    fade_b: vec4f,  // ... blending to the last
+    tint: vec4f,    // multiplier blended in with height
 }
 @group(0) @binding(0) var<uniform> u: U3;
 
@@ -76,14 +81,14 @@ fn vs_main(in: VSIn) -> VSOut {
     let states = max(u.grid.w, 2.0);
     var base: vec3f;
     if in.istate < 1.5 {
-        base = vec3f(1.0, 0.86, 0.5); // alive: warm glow
+        base = u.alive.rgb;
     } else {
         let t = clamp((in.istate - 1.0) / (states - 1.0), 0.0, 1.0);
-        base = mix(vec3f(0.93, 0.35, 0.3), vec3f(0.3, 0.12, 0.45), t);
+        base = mix(u.fade_a.rgb, u.fade_b.rgb, t);
     }
-    // cool tint with height
+    // tint with height
     let hf = in.ipos.y / max(u.grid.y, 1.0);
-    base = mix(base, base * vec3f(0.55, 0.8, 1.45), hf * 0.45);
+    base = mix(base, base * u.tint.rgb, hf * 0.45);
 
     let ndl = max(dot(in.normal, -normalize(u.light.xyz)), 0.0);
     out.col = base * (u.light.w + (1.0 - u.light.w) * ndl);
@@ -111,6 +116,10 @@ struct CubeUniform {
     view_proj: [[f32; 4]; 4],
     light: [f32; 4],
     grid: [f32; 4],
+    alive: [f32; 4],
+    fade_a: [f32; 4],
+    fade_b: [f32; 4],
+    tint: [f32; 4],
 }
 
 #[repr(C)]
@@ -153,7 +162,69 @@ impl Default for Camera {
 }
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
-const CLEAR: wgpu::Color = wgpu::Color { r: 0.012, g: 0.016, b: 0.034, a: 1.0 };
+
+/// Colours for one 2D region: live cells, background, and the colour the
+/// fading trail blends towards. `depth_cue` darkens the top of the region.
+#[derive(Clone, Copy)]
+pub struct RegionColors {
+    pub fg: [f32; 3],
+    pub bg: [f32; 3],
+    pub trail: [f32; 3],
+    pub depth_cue: f32,
+}
+
+impl RegionColors {
+    fn uniform(&self) -> RegionUniform {
+        let rgba = |c: [f32; 3]| [c[0], c[1], c[2], 1.0];
+        RegionUniform {
+            fg: rgba(self.fg),
+            bg: rgba(self.bg),
+            trail: rgba(self.trail),
+            misc: [self.depth_cue, 0.0, 0.0, 0.0],
+        }
+    }
+}
+
+/// Every colour the canvas draws with. The page theme (CSS) supplies these
+/// through `app::set_palette`; `Default` is the original night palette.
+#[derive(Clone, Copy)]
+pub struct Palette {
+    /// Background of the 3D region (the clear colour).
+    pub clear: [f32; 3],
+    pub rule30: RegionColors,
+    pub gol: RegionColors,
+    pub cube_alive: [f32; 3],
+    pub cube_fade_a: [f32; 3],
+    pub cube_fade_b: [f32; 3],
+    /// Per-channel multiplier blended in towards the top of the box.
+    pub cube_tint: [f32; 3],
+    pub cube_ambient: f32,
+}
+
+impl Default for Palette {
+    fn default() -> Self {
+        Self {
+            clear: [0.012, 0.016, 0.034],
+            rule30: RegionColors {
+                fg: [1.0, 0.72, 0.28],
+                bg: [0.016, 0.014, 0.03],
+                trail: [0.1, 0.05, 0.03],
+                depth_cue: 0.1,
+            },
+            gol: RegionColors {
+                fg: [0.45, 1.0, 0.72],
+                bg: [0.012, 0.022, 0.036],
+                trail: [0.05, 0.28, 0.30],
+                depth_cue: 0.1,
+            },
+            cube_alive: [1.0, 0.86, 0.5],
+            cube_fade_a: [0.93, 0.35, 0.3],
+            cube_fade_b: [0.3, 0.12, 0.45],
+            cube_tint: [0.55, 0.8, 1.45],
+            cube_ambient: 0.35,
+        }
+    }
+}
 
 fn cube_mesh() -> Vec<CubeVertex> {
     // 6 faces * 2 triangles; unit cube centred at origin, side 1
@@ -217,6 +288,7 @@ pub struct Renderer {
     instance_count: u32,
 
     upload_scratch: Vec<u8>,
+    palette: Palette,
 }
 
 impl Renderer {
@@ -333,6 +405,7 @@ impl Renderer {
             ..Default::default()
         });
 
+        let palette = Palette::default();
         let mk_uniform = |label: &str, u: RegionUniform| {
             use wgpu::util::DeviceExt;
             device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -341,28 +414,8 @@ impl Renderer {
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             })
         };
-        // Rule 30: amber cells on near-black
-        let rule30_uniform = mk_uniform(
-            "rule30 u",
-            RegionUniform {
-                fg: [1.0, 0.72, 0.28, 1.0],
-                bg: [0.016, 0.014, 0.03, 1.0],
-                trail: [0.1, 0.05, 0.03, 1.0],
-                misc: [0.0; 4],
-            },
-        );
-        // Life: minty cells, teal trails
-        let gol_uniform = mk_uniform(
-            "gol u",
-            RegionUniform {
-                fg: [0.45, 1.0, 0.72, 1.0],
-                // fg: [0.35, 0.55, 1.0, 1.0],
-                bg: [0.012, 0.022, 0.036, 1.0],
-                trail: [0.05, 0.28, 0.30, 1.0],
-                // trail: [0.23, 0.31, 0.48, 1.0],
-                misc: [1.0, 0.0, 0.0, 0.0],
-            },
-        );
+        let rule30_uniform = mk_uniform("rule30 u", palette.rule30.uniform());
+        let gol_uniform = mk_uniform("gol u", palette.gol.uniform());
 
         // --- 3D region resources ---
         let cube_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -479,7 +532,14 @@ impl Renderer {
             instance_buf,
             instance_count: 0,
             upload_scratch: Vec::new(),
+            palette,
         })
+    }
+
+    pub fn set_palette(&mut self, palette: Palette) {
+        self.palette = palette;
+        self.queue.write_buffer(&self.rule30_uniform, 0, bytemuck::bytes_of(&palette.rule30.uniform()));
+        self.queue.write_buffer(&self.gol_uniform, 0, bytemuck::bytes_of(&palette.gol.uniform()));
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
@@ -580,10 +640,16 @@ impl Renderer {
         let view = Mat4::look_at_rh(eye, center, Vec3::Y);
         let proj = Mat4::perspective_rh(cam.fov_deg.to_radians(), aspect.max(0.05), 1.0, 600.0);
         let light = (center - eye + Vec3::new(0.0, -(Y3 as f32) * 1.5, 0.0)).normalize();
+        let p = &self.palette;
+        let rgba = |c: [f32; 3]| [c[0], c[1], c[2], 1.0];
         let u3 = CubeUniform {
             view_proj: (proj * view).to_cols_array_2d(),
-            light: [light.x, light.y, light.z, 0.35],
+            light: [light.x, light.y, light.z, p.cube_ambient],
             grid: [X3 as f32, Y3 as f32, Z3 as f32, states as f32],
+            alive: rgba(p.cube_alive),
+            fade_a: rgba(p.cube_fade_a),
+            fade_b: rgba(p.cube_fade_b),
+            tint: rgba(p.cube_tint),
         };
         self.queue.write_buffer(&self.cube_uniform, 0, bytemuck::bytes_of(&u3));
 
@@ -620,7 +686,12 @@ impl Renderer {
                     view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(CLEAR),
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: self.palette.clear[0] as f64,
+                            g: self.palette.clear[1] as f64,
+                            b: self.palette.clear[2] as f64,
+                            a: 1.0,
+                        }),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
