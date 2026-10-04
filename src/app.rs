@@ -1,7 +1,8 @@
 //! Wasm entry point and JS-facing API. JS owns the DOM (buttons, drag
 //! handles, modal); this side owns simulation, history and rendering.
-use crate::render::{Camera, CubeInstance, Palette, RegionColors, Renderer};
-use crate::sim::{ca3d, Cascade, Snapshot, PRESETS_3D};
+use crate::layout::{dims_3d, framing_camera, Camera, View};
+use crate::render::{CubeInstance, Palette, RegionColors, Renderer};
+use crate::sim::{Cascade, Snapshot, PRESETS_3D};
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
@@ -12,36 +13,6 @@ const CELL_PX: f64 = 4.0;
 /// How many ticks of undo history to keep (~330 KB per snapshot).
 const HISTORY: usize = 100;
 const MIN_REGION_FRAC: f64 = 0.08;
-/// Depth of the 3D box in cells. Width and height follow the band's shape.
-const DEPTH_3D: usize = 32;
-
-/// 3D grid dimensions for a band `w`×`h` CSS pixels: the box takes the
-/// band's aspect ratio, as many cells as `CELL_BUDGET` allows.
-fn dims_3d(w: f64, h: f64) -> (usize, usize, usize) {
-    let area = (ca3d::CELL_BUDGET / DEPTH_3D) as f64; // nx * ny
-    let aspect = (w / h.max(1.0)).clamp(0.2, 12.0);
-    let ny = ((area / aspect).sqrt() as usize).max(12);
-    let nx = ((area / ny as f64) as usize).max(12);
-    (nx, ny, DEPTH_3D)
-}
-
-/// A camera that looks squarely at the box's front face and pulls back
-/// just far enough to fit it into a viewport of the given aspect ratio.
-fn framing_camera((nx, ny, nz): (usize, usize, usize), aspect: f64) -> Camera {
-    let fov = 20.0f32;
-    let tv = (fov.to_radians() / 2.0).tan();
-    let th = tv * aspect.max(0.05) as f32;
-    let fit_w = nx as f32 / 2.0 / th;
-    let fit_h = ny as f32 / 2.0 / tv;
-    Camera {
-        azimuth_deg: 90.0,
-        elevation_deg: 10.0,
-        distance: fit_w.max(fit_h) + nz as f32 / 2.0,
-        target_y: ny as f32 / 2.0,
-        fov_deg: fov,
-    }
-}
-
 struct App {
     renderer: Renderer,
     cascade: Cascade,
@@ -50,7 +21,7 @@ struct App {
     tps: f64,
     acc: f64,
     last_ms: f64,
-    camera: Camera,
+    view: View,
     // layout
     css_w: f64,
     css_h: f64,
@@ -167,7 +138,7 @@ impl App {
         self.renderer.render(
             (self.b1_frac * h_dev) as f32,
             (self.b2_frac * h_dev) as f32,
-            self.camera,
+            self.view.camera,
             self.cascade.ca3d.preset.states,
             (self.cascade.ca3d.nx, self.cascade.ca3d.ny, self.cascade.ca3d.nz),
         );
@@ -177,25 +148,19 @@ impl App {
         (self.css_w, self.b1_frac * self.css_h)
     }
 
+    /// The camera that frames the box in its band, as of the last layout.
     fn default_camera(&self) -> Camera {
-        let (w, h) = self.band_3d();
-        let c = &self.cascade.ca3d;
-        framing_camera((c.nx, c.ny, c.nz), w / h.max(1.0))
+        self.view.frame()
     }
 
     fn apply_layout(&mut self) {
         let (w, rows30, rows_gol) = self.grid_dims();
         self.cascade.resize(w, rows30, rows_gol);
-        // Reshape the 3D box to the band. The camera keeps its angles and
-        // field of view; distance and target height scale with the new
-        // framing, so an orbited view stays orbited.
-        let old = self.default_camera();
+        // Reshape the 3D box to the band and re-frame the camera (see View).
         let (bw, bh) = self.band_3d();
-        let (nx, ny, nz) = dims_3d(bw, bh);
-        self.cascade.ca3d.resize(nx, ny, nz);
-        let new = self.default_camera();
-        self.camera.distance *= new.distance / old.distance;
-        self.camera.target_y *= new.target_y / old.target_y;
+        let dims = dims_3d(bw, bh);
+        self.cascade.ca3d.resize(dims.0, dims.1, dims.2);
+        self.view.reframe(framing_camera(dims, bw / bh.max(1.0)));
         self.history.clear();
         self.dirty = true;
     }
@@ -231,7 +196,7 @@ pub async fn start(canvas_id: String, css_w: f64, css_h: f64, dpr: f64) -> Resul
         tps: 30.0,
         acc: 0.0,
         last_ms: 0.0,
-        camera: Camera::default(),
+        view: View::new(Camera::default()),
         css_w,
         css_h,
         dpr,
@@ -242,7 +207,7 @@ pub async fn start(canvas_id: String, css_w: f64, css_h: f64, dpr: f64) -> Resul
         instances: Vec::new(),
     };
     app.apply_layout();
-    app.camera = app.default_camera();
+    app.view = View::new(app.default_camera());
     APP.with(|a| *a.borrow_mut() = Some(app));
 
     // requestAnimationFrame loop
@@ -316,7 +281,7 @@ pub fn reset() {
 #[wasm_bindgen]
 pub fn set_camera(azimuth: f64, elevation: f64, distance: f64, target_y: f64, fov: f64) {
     with_app(|a| {
-        a.camera = Camera {
+        a.view.camera = Camera {
             azimuth_deg: azimuth as f32,
             elevation_deg: elevation as f32,
             distance: distance as f32,
@@ -339,7 +304,7 @@ fn camera_to_vec(c: Camera) -> Vec<f64> {
 /// Returns [azimuth, elevation, distance, target_y, fov] for the current camera.
 #[wasm_bindgen]
 pub fn camera_values() -> Vec<f64> {
-    camera_to_vec(with_app(|a| a.camera).unwrap_or_default())
+    camera_to_vec(with_app(|a| a.view.camera).unwrap_or_default())
 }
 
 /// The built-in default camera, in the same order as `camera_values`.

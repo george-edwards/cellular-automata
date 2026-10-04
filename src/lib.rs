@@ -1,3 +1,4 @@
+pub mod layout;
 pub mod sim;
 
 #[cfg(target_arch = "wasm32")]

@@ -136,30 +136,7 @@ pub struct CubeInstance {
     pub state: f32,
 }
 
-/// Static orbit camera for the 3D region. The target sits at the centre of
-/// the X/Z footprint at height `target_y`; the eye orbits it on a sphere.
-/// `azimuth_deg` 0 looks along +X; `elevation_deg` lifts the eye above the
-/// horizontal plane.
-#[derive(Clone, Copy)]
-pub struct Camera {
-    pub azimuth_deg: f32,
-    pub elevation_deg: f32,
-    pub distance: f32,
-    pub target_y: f32,
-    pub fov_deg: f32,
-}
-
-impl Default for Camera {
-    fn default() -> Self {
-        Self {
-            azimuth_deg: 90.0,
-            elevation_deg: 18.0, // 0.0
-            distance: 206.0, // 7.0
-            target_y: 40.0, // 24.0
-            fov_deg: 20.0, // 69.0
-        }
-    }
-}
+pub use crate::layout::Camera;
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24Plus;
 
