@@ -12,6 +12,35 @@ const CELL_PX: f64 = 4.0;
 /// How many ticks of undo history to keep (~330 KB per snapshot).
 const HISTORY: usize = 100;
 const MIN_REGION_FRAC: f64 = 0.08;
+/// Depth of the 3D box in cells. Width and height follow the band's shape.
+const DEPTH_3D: usize = 32;
+
+/// 3D grid dimensions for a band `w`×`h` CSS pixels: the box takes the
+/// band's aspect ratio, as many cells as `CELL_BUDGET` allows.
+fn dims_3d(w: f64, h: f64) -> (usize, usize, usize) {
+    let area = (ca3d::CELL_BUDGET / DEPTH_3D) as f64; // nx * ny
+    let aspect = (w / h.max(1.0)).clamp(0.2, 12.0);
+    let ny = ((area / aspect).sqrt() as usize).max(12);
+    let nx = ((area / ny as f64) as usize).max(12);
+    (nx, ny, DEPTH_3D)
+}
+
+/// A camera that looks squarely at the box's front face and pulls back
+/// just far enough to fit it into a viewport of the given aspect ratio.
+fn framing_camera((nx, ny, nz): (usize, usize, usize), aspect: f64) -> Camera {
+    let fov = 20.0f32;
+    let tv = (fov.to_radians() / 2.0).tan();
+    let th = tv * aspect.max(0.05) as f32;
+    let fit_w = nx as f32 / 2.0 / th;
+    let fit_h = ny as f32 / 2.0 / tv;
+    Camera {
+        azimuth_deg: 90.0,
+        elevation_deg: 10.0,
+        distance: fit_w.max(fit_h) + nz as f32 / 2.0,
+        target_y: ny as f32 / 2.0,
+        fov_deg: fov,
+    }
+}
 
 struct App {
     renderer: Renderer,
@@ -95,11 +124,12 @@ impl App {
 
         // 3D instances
         self.instances.clear();
-        let cells = &self.cascade.ca3d.cells;
-        for y in 0..ca3d::Y3 {
-            for z in 0..ca3d::Z3 {
-                let base = y * ca3d::X3 * ca3d::Z3 + z * ca3d::X3;
-                for x in 0..ca3d::X3 {
+        let c3 = &self.cascade.ca3d;
+        let cells = &c3.cells;
+        for y in 0..c3.ny {
+            for z in 0..c3.nz {
+                let base = y * c3.nx * c3.nz + z * c3.nx;
+                for x in 0..c3.nx {
                     let v = cells[base + x];
                     if v != 0 {
                         self.instances.push(CubeInstance {
@@ -139,12 +169,33 @@ impl App {
             (self.b2_frac * h_dev) as f32,
             self.camera,
             self.cascade.ca3d.preset.states,
+            (self.cascade.ca3d.nx, self.cascade.ca3d.ny, self.cascade.ca3d.nz),
         );
+    }
+
+    fn band_3d(&self) -> (f64, f64) {
+        (self.css_w, self.b1_frac * self.css_h)
+    }
+
+    fn default_camera(&self) -> Camera {
+        let (w, h) = self.band_3d();
+        let c = &self.cascade.ca3d;
+        framing_camera((c.nx, c.ny, c.nz), w / h.max(1.0))
     }
 
     fn apply_layout(&mut self) {
         let (w, rows30, rows_gol) = self.grid_dims();
         self.cascade.resize(w, rows30, rows_gol);
+        // Reshape the 3D box to the band. The camera keeps its angles and
+        // field of view; distance and target height scale with the new
+        // framing, so an orbited view stays orbited.
+        let old = self.default_camera();
+        let (bw, bh) = self.band_3d();
+        let (nx, ny, nz) = dims_3d(bw, bh);
+        self.cascade.ca3d.resize(nx, ny, nz);
+        let new = self.default_camera();
+        self.camera.distance *= new.distance / old.distance;
+        self.camera.target_y *= new.target_y / old.target_y;
         self.history.clear();
         self.dirty = true;
     }
@@ -163,13 +214,16 @@ pub async fn start(canvas_id: String, css_w: f64, css_h: f64, dpr: f64) -> Resul
 
     let renderer = Renderer::new(canvas).await.map_err(|e| JsValue::from_str(&e))?;
 
-    let b1_frac = 0.40;
+    // 3D gets the most room; a short Life band means more of Life's activity
+    // reaches the 3D floor, sooner (with 20% of an 800px screen, the first
+    // seed arrives in ~9s rather than ~18s, with no long lulls after)
+    let b1_frac = 0.52;
     let b2_frac = 0.72;
     let width = ((css_w / CELL_PX) as usize).max(16);
     let rows30 = (((1.0 - b2_frac) * css_h / CELL_PX) as usize).max(2);
     let rows_gol = (((b2_frac - b1_frac) * css_h / CELL_PX) as usize).max(2);
 
-    let app = App {
+    let mut app = App {
         renderer,
         cascade: Cascade::new(width, rows30, rows_gol, 0),
         history: VecDeque::new(),
@@ -187,6 +241,8 @@ pub async fn start(canvas_id: String, css_w: f64, css_h: f64, dpr: f64) -> Resul
         dirty: true,
         instances: Vec::new(),
     };
+    app.apply_layout();
+    app.camera = app.default_camera();
     APP.with(|a| *a.borrow_mut() = Some(app));
 
     // requestAnimationFrame loop
@@ -247,7 +303,10 @@ pub fn set_speed(tps: f64) {
 pub fn reset() {
     with_app(|a| {
         let (w, rows30, rows_gol) = a.grid_dims();
+        let c3 = &a.cascade.ca3d;
+        let dims = (c3.nx, c3.ny, c3.nz);
         a.cascade = Cascade::new(w, rows30, rows_gol, a.preset_idx);
+        a.cascade.ca3d.resize(dims.0, dims.1, dims.2);
         a.history.clear();
         a.dirty = true;
     });
@@ -286,7 +345,7 @@ pub fn camera_values() -> Vec<f64> {
 /// The built-in default camera, in the same order as `camera_values`.
 #[wasm_bindgen]
 pub fn camera_defaults() -> Vec<f64> {
-    camera_to_vec(Camera::default())
+    camera_to_vec(with_app(|a| a.default_camera()).unwrap_or_default())
 }
 
 #[wasm_bindgen]
@@ -349,10 +408,16 @@ pub fn set_palette(v: Vec<f32>) -> Result<(), JsValue> {
     Ok(())
 }
 
+/// The 3D grid's current [width, height, depth] in cells.
+#[wasm_bindgen]
+pub fn grid_size_3d() -> Vec<usize> {
+    with_app(|a| vec![a.cascade.ca3d.nx, a.cascade.ca3d.ny, a.cascade.ca3d.nz]).unwrap_or_default()
+}
+
 /// Returns [b1, b2] as fractions of the canvas height.
 #[wasm_bindgen]
 pub fn boundaries() -> Vec<f64> {
-    with_app(|a| vec![a.b1_frac, a.b2_frac]).unwrap_or_else(|| vec![0.4, 0.72])
+    with_app(|a| vec![a.b1_frac, a.b2_frac]).unwrap_or_else(|| vec![0.52, 0.72])
 }
 
 #[wasm_bindgen]

@@ -3,7 +3,7 @@
 //!   full-viewport quads with per-region colour mapping.
 //! - Top region: the 3D automaton as instanced, lit cubes with an orbiting
 //!   perspective camera.
-use crate::sim::ca3d::{X3, Y3, Z3};
+use crate::sim::ca3d::CELL_BUDGET;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 
@@ -507,7 +507,9 @@ impl Renderer {
         };
         let instance_buf = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("cube instances"),
-            size: (X3 * Y3 * Z3 * std::mem::size_of::<CubeInstance>()) as u64,
+            // sized for the largest grid the app will ask for, so a resize
+            // never needs a new buffer
+            size: (CELL_BUDGET * std::mem::size_of::<CubeInstance>()) as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -624,28 +626,29 @@ impl Renderer {
 
     /// `b1`, `b2`: region boundaries in device pixels measured from the top
     /// (0 < b1 < b2 < height). `time` drives the orbiting camera.
-    pub fn render(&mut self, b1: f32, b2: f32, cam: Camera, states: u8) {
+    pub fn render(&mut self, b1: f32, b2: f32, cam: Camera, states: u8, (nx, ny, nz): (usize, usize, usize)) {
         let (w, h) = (self.config.width as f32, self.config.height as f32);
         let b1 = b1.clamp(8.0, h - 16.0);
         let b2 = b2.clamp(b1 + 8.0, h - 8.0);
 
         // Static orbit camera for the 3D region (see `Camera`)
         let aspect = w / b1.max(1.0);
-        let center = Vec3::new(X3 as f32 / 2.0, cam.target_y, Z3 as f32 / 2.0);
+        let center = Vec3::new(nx as f32 / 2.0, cam.target_y, nz as f32 / 2.0);
         let az = cam.azimuth_deg.to_radians();
         let el = cam.elevation_deg.to_radians();
         let eye = center
             + cam.distance
                 * Vec3::new(el.cos() * az.cos(), el.sin(), el.cos() * az.sin());
         let view = Mat4::look_at_rh(eye, center, Vec3::Y);
-        let proj = Mat4::perspective_rh(cam.fov_deg.to_radians(), aspect.max(0.05), 1.0, 600.0);
-        let light = (center - eye + Vec3::new(0.0, -(Y3 as f32) * 1.5, 0.0)).normalize();
+        let far = cam.distance + (nx.max(ny).max(nz) as f32) * 2.0;
+        let proj = Mat4::perspective_rh(cam.fov_deg.to_radians(), aspect.max(0.05), 1.0, far);
+        let light = (center - eye + Vec3::new(0.0, -(ny as f32) * 1.5, 0.0)).normalize();
         let p = &self.palette;
         let rgba = |c: [f32; 3]| [c[0], c[1], c[2], 1.0];
         let u3 = CubeUniform {
             view_proj: (proj * view).to_cols_array_2d(),
             light: [light.x, light.y, light.z, p.cube_ambient],
-            grid: [X3 as f32, Y3 as f32, Z3 as f32, states as f32],
+            grid: [nx as f32, ny as f32, nz as f32, states as f32],
             alive: rgba(p.cube_alive),
             fade_a: rgba(p.cube_fade_a),
             fade_b: rgba(p.cube_fade_b),

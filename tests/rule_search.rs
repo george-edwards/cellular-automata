@@ -1,6 +1,14 @@
 //! Search for 3D rules that behave well on the cascade's *real* input
 //! (run with: cargo test --release --test rule_search -- --ignored --nocapture).
 use cascade_ca::sim::ca3d::{Ca3d, Neighborhood, Preset3d, X3, Y3, Z3};
+
+/// Box size to simulate: DIMS="nx,ny,nz" (default: the original 72x48x72).
+fn dims() -> (usize, usize, usize) {
+    std::env::var("DIMS").map_or((X3, Y3, Z3), |v| {
+        let d: Vec<usize> = v.split(',').map(|x| x.parse().unwrap()).collect();
+        (d[0], d[1], d[2])
+    })
+}
 use cascade_ca::sim::Cascade;
 use std::sync::{Arc, Mutex};
 
@@ -42,29 +50,45 @@ fn record_trace(w: usize, r30: usize, rg: usize, ticks: usize) -> Vec<Vec<u8>> {
     out
 }
 
+/// The cascade's 2D sizes: PHONE=1 for a 390x844 phone, LAPTOP=1 for
+/// 1280x800, otherwise a 1600x900 desktop (default region split, 4px cells).
+fn record_trace_for_env(ticks: usize) -> Vec<Vec<u8>> {
+    let (w, r30, rg) = if std::env::var("PHONE").is_ok() {
+        (97, 59, 67)
+    } else if std::env::var("LAPTOP").is_ok() {
+        (320, 56, 64)
+    } else {
+        (400, 63, 72)
+    };
+    // GOL_ROWS overrides Life's band height (rows of 4px cells)
+    let rg = std::env::var("GOL_ROWS").map_or(rg, |v| v.parse().unwrap());
+    record_trace(w, r30, rg, ticks)
+}
+
 struct Stats { mean_vis: f64, max_vis: f64, empty: f64, height: f64, end_vis: f64, solid: f64 }
 
 fn run(p: Preset3d, feed: &[Vec<u8>]) -> Stats {
-    let mut ca = Ca3d::new(p);
+    let (nx, ny, nz) = dims();
+    let mut ca = Ca3d::with_size(p, nx, ny, nz);
     let (mut vis_sum, mut max_vis, mut empty, mut h_sum, mut n) = (0f64, 0f64, 0usize, 0f64, 0usize);
-    let vol = (X3 * Y3 * Z3) as f64;
+    let vol = (nx * ny * nz) as f64;
     let mut end_vis = 0.0;
     let (mut solid_sum, mut solid_n) = (0f64, 0usize);
     for (t, row) in feed.iter().enumerate() {
         ca.step(row);
         if t % 10 == 9 && t >= feed.len() / 4 {
             let vis = ca.cells.iter().filter(|&&c| c != 0).count() as f64;
-            let top = (0..Y3).rev().find(|&y| ca.cells[y * X3 * Z3..(y + 1) * X3 * Z3].iter().any(|&c| c == 1)).map_or(0, |y| y + 1);
+            let top = (0..ny).rev().find(|&y| ca.cells[y * nx * nz..(y + 1) * nx * nz].iter().any(|&c| c == 1)).map_or(0, |y| y + 1);
             vis_sum += vis; max_vis = max_vis.max(vis); h_sum += top as f64; n += 1;
             if vis < 150.0 { empty += 1; }
             // share of visible cubes buried inside a lump (all 6 faces covered):
             // high means solid blobs, low means lacy, structured growth
             if t % 50 == 49 && vis >= 150.0 {
                 let c = &ca.cells;
-                let (layer, mut inner) = (X3 * Z3, 0usize);
-                for y in 1..Y3 - 1 { for z in 1..Z3 - 1 { for x in 1..X3 - 1 {
-                    let i = x + z * X3 + y * layer;
-                    if c[i] != 0 && c[i - 1] != 0 && c[i + 1] != 0 && c[i - X3] != 0 && c[i + X3] != 0
+                let (layer, mut inner) = (nx * nz, 0usize);
+                for y in 1..ny - 1 { for z in 1..nz - 1 { for x in 1..nx - 1 {
+                    let i = x + z * nx + y * layer;
+                    if c[i] != 0 && c[i - 1] != 0 && c[i + 1] != 0 && c[i - nx] != 0 && c[i + nx] != 0
                         && c[i - layer] != 0 && c[i + layer] != 0 { inner += 1; }
                 }}}
                 solid_sum += inner as f64 / vis; solid_n += 1;
@@ -105,8 +129,7 @@ fn random_rules(n: usize) -> Vec<&'static str> {
 fn search() {
     let ticks = 4000;
     // the 3D automaton does its own "switched on" detection, so feed it the raw rows
-    let (w, r30, rg) = if std::env::var("PHONE").is_ok() { (97, 59, 67) } else { (400, 63, 72) };
-    let trace = Arc::new(record_trace(w, r30, rg, ticks));
+    let trace = Arc::new(record_trace_for_env(ticks));
     let rises: Vec<u32> = std::env::var("RISES").map_or(vec![0, 2, 3, 5], |v| v.split(',').map(|r| r.parse().unwrap()).collect());
     let mut rules: Vec<&'static str> = match std::env::var("ONLY") {
         Ok(list) => list.split(';').map(|r| &*Box::leak(r.to_string().into_boxed_str())).collect(),
@@ -162,8 +185,7 @@ fn dump() {
     let rules = std::env::var("RULES").unwrap();
     let ticks: Vec<usize> = std::env::var("TICKS").unwrap().split(',').map(|t| t.parse().unwrap()).collect();
     let out = std::env::var("OUT").unwrap();
-    let (w, r30, rg) = if std::env::var("PHONE").is_ok() { (97, 59, 67) } else { (400, 63, 72) };
-    let trace = record_trace(w, r30, rg, *ticks.iter().max().unwrap());
+    let trace = record_trace_for_env(*ticks.iter().max().unwrap());
     let specs: Vec<(String, usize, u32)> = rules.split(';').map(|r| {
         let f: Vec<&str> = r.split('@').collect();
         (f[0].to_string(), f[1].parse().unwrap(), f.get(2).map_or(0, |v| v.parse().unwrap()))
@@ -172,7 +194,8 @@ fn dump() {
         for (i, (rule, stamp, rise)) in specs.iter().enumerate() {
             let (trace, ticks, out) = (&trace, &ticks, &out);
             sc.spawn(move || {
-                let mut ca = Ca3d::new(preset(Box::leak(rule.clone().into_boxed_str()), *stamp, *rise));
+                let (nx, ny, nz) = dims();
+                let mut ca = Ca3d::with_size(preset(Box::leak(rule.clone().into_boxed_str()), *stamp, *rise), nx, ny, nz);
                 for (t, row) in trace.iter().enumerate() {
                     ca.step(row);
                     if ticks.contains(&(t + 1)) {

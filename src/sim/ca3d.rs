@@ -4,9 +4,17 @@
 ///
 /// Rules follow the survival/birth/states/neighbourhood convention used by
 /// most 3D CA explorers (e.g. "445", "Pyroclastic", "Clouds").
+///
+/// The grid's size is set at runtime (see `Ca3d::resize`) so the box can
+/// match the shape of the screen region it's drawn in. These are the
+/// default dimensions, used by tests and before the first layout.
 pub const X3: usize = 72;
 pub const Y3: usize = 48;
 pub const Z3: usize = 72;
+
+/// Most cells the app will ask for (about the default box's 72×48×72),
+/// which keeps the cost of a step roughly fixed whatever the screen size.
+pub const CELL_BUDGET: usize = 260_000;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Neighborhood {
@@ -57,7 +65,8 @@ const fn range_mask(lo: u32, hi: u32) -> u32 {
 /// Chosen with tests/rule_search.rs against the cascade's real input. Every
 /// preset drifts upward: without a way out, continuous input either dies
 /// away or fills the closed box, and almost nothing sits in between.
-/// `rise` was tuned per rule so each stays busy without filling the box.
+/// `rise` was tuned per rule so each stays busy without filling the box,
+/// across the box shapes that phone, tablet and desktop screens produce.
 pub const PRESETS_3D: &[Preset3d] = &[
     Preset3d {
         name: "Builder",
@@ -68,7 +77,7 @@ pub const PRESETS_3D: &[Preset3d] = &[
         states: 10,
         nbhd: Neighborhood::Moore,
         stamp: 1,
-        rise: 12,
+        rise: 10,
     },
     Preset3d {
         name: "Cumulus",
@@ -79,7 +88,7 @@ pub const PRESETS_3D: &[Preset3d] = &[
         states: 10,
         nbhd: Neighborhood::Moore,
         stamp: 1,
-        rise: 7,
+        rise: 4,
     },
     Preset3d {
         name: "Puffs",
@@ -92,22 +101,14 @@ pub const PRESETS_3D: &[Preset3d] = &[
         stamp: 1,
         rise: 3,
     },
-    Preset3d {
-        name: "Foam",
-        rule_str: "/4/2/Moore",
-        blurb: "No cell survives a second tick, so activity travels as waves that leave a rising sheet of foam.",
-        survival: 0,
-        birth: mask(&[4]),
-        states: 2,
-        nbhd: Neighborhood::Moore,
-        stamp: 1,
-        rise: 4,
-    },
 ];
 
 pub struct Ca3d {
     pub preset: Preset3d,
-    pub cells: Vec<u8>, // x + z*X3 + y*X3*Z3
+    pub nx: usize,
+    pub ny: usize,
+    pub nz: usize,
+    pub cells: Vec<u8>, // x + z*nx + y*nx*nz
     /// Life's top row on the previous tick: only cells that have just
     /// switched on seed the floor, so a still life stuck against the
     /// boundary seeds once rather than every tick forever.
@@ -121,21 +122,24 @@ pub struct Ca3d {
 
 #[derive(Clone)]
 pub struct Snapshot {
+    dims: (usize, usize, usize),
     cells: Vec<u8>,
     prev_feed: Vec<u8>,
     tick: u64,
 }
 
-#[inline]
-pub fn idx(x: usize, y: usize, z: usize) -> usize {
-    x + z * X3 + y * X3 * Z3
-}
-
 impl Ca3d {
     pub fn new(preset: Preset3d) -> Self {
-        let n = X3 * Y3 * Z3;
+        Self::with_size(preset, X3, Y3, Z3)
+    }
+
+    pub fn with_size(preset: Preset3d, nx: usize, ny: usize, nz: usize) -> Self {
+        let n = nx * ny * nz;
         Self {
             preset,
+            nx,
+            ny,
+            nz,
             cells: vec![0; n],
             prev_feed: Vec::new(),
             tick: 0,
@@ -143,6 +147,37 @@ impl Ca3d {
             sum_a: vec![0; n],
             sum_b: vec![0; n],
         }
+    }
+
+    #[inline]
+    pub fn idx(&self, x: usize, y: usize, z: usize) -> usize {
+        x + z * self.nx + y * self.nx * self.nz
+    }
+
+    /// Change the grid's dimensions, keeping whatever overlaps: centred
+    /// across X and Z, anchored to the floor (the same way Life keeps its
+    /// cells when the page is resized).
+    pub fn resize(&mut self, nx: usize, ny: usize, nz: usize) {
+        if (nx, ny, nz) == (self.nx, self.ny, self.nz) {
+            return;
+        }
+        let mut cells = vec![0u8; nx * ny * nz];
+        let (cx, cz) = (nx.min(self.nx), nz.min(self.nz));
+        let (sx, dx) = ((self.nx - cx) / 2, (nx - cx) / 2);
+        let (sz, dz) = ((self.nz - cz) / 2, (nz - cz) / 2);
+        for y in 0..ny.min(self.ny) {
+            for z in 0..cz {
+                let src = self.idx(sx, y, sz + z);
+                let dst = (dx) + (dz + z) * nx + y * nx * nz;
+                cells[dst..dst + cx].copy_from_slice(&self.cells[src..src + cx]);
+            }
+        }
+        let n = cells.len();
+        self.cells = cells;
+        (self.nx, self.ny, self.nz) = (nx, ny, nz);
+        self.next = vec![0; n];
+        self.sum_a = vec![0; n];
+        self.sum_b = vec![0; n];
     }
 
     pub fn set_preset(&mut self, preset: Preset3d) {
@@ -182,8 +217,8 @@ impl Ca3d {
         std::mem::swap(&mut self.cells, &mut self.next);
         self.tick += 1;
         if p.rise > 0 && self.tick % p.rise as u64 == 0 {
-            let layer = X3 * Z3;
-            self.cells.copy_within(0..(Y3 - 1) * layer, layer);
+            let layer = self.nx * self.nz;
+            self.cells.copy_within(0..(self.ny - 1) * layer, layer);
             self.cells[..layer].fill(0);
         }
         self.inject(feed);
@@ -194,55 +229,57 @@ impl Ca3d {
     /// itself), which is far cheaper than visiting 26 neighbours per cell.
     fn count_all(&mut self, nbhd: Neighborhood) {
         let live = |v: u8| u8::from(v == 1);
+        let (nx, ny, nz) = (self.nx, self.ny, self.nz);
+        let idx = |x: usize, y: usize, z: usize| x + z * nx + y * nx * nz;
         let (cells, a, b) = (&self.cells, &mut self.sum_a, &mut self.sum_b);
         match nbhd {
             Neighborhood::Moore => {
                 // X: a = live[x-1] + live[x] + live[x+1]
-                for row in 0..Y3 * Z3 {
-                    let r = row * X3;
-                    for x in 0..X3 {
+                for row in 0..ny * nz {
+                    let r = row * nx;
+                    for x in 0..nx {
                         let mut s = live(cells[r + x]);
                         if x > 0 { s += live(cells[r + x - 1]); }
-                        if x + 1 < X3 { s += live(cells[r + x + 1]); }
+                        if x + 1 < nx { s += live(cells[r + x + 1]); }
                         a[r + x] = s;
                     }
                 }
                 // Z: b = a[z-1] + a[z] + a[z+1]
-                for y in 0..Y3 {
-                    for z in 0..Z3 {
+                for y in 0..ny {
+                    for z in 0..nz {
                         let r = idx(0, y, z);
-                        for x in 0..X3 {
+                        for x in 0..nx {
                             let mut s = a[r + x];
-                            if z > 0 { s += a[r + x - X3]; }
-                            if z + 1 < Z3 { s += a[r + x + X3]; }
+                            if z > 0 { s += a[r + x - nx]; }
+                            if z + 1 < nz { s += a[r + x + nx]; }
                             b[r + x] = s;
                         }
                     }
                 }
                 // Y: a = b[y-1] + b[y] + b[y+1], then drop the cell itself
-                let layer = X3 * Z3;
-                for y in 0..Y3 {
+                let layer = nx * nz;
+                for y in 0..ny {
                     for i in y * layer..(y + 1) * layer {
                         let mut s = b[i];
                         if y > 0 { s += b[i - layer]; }
-                        if y + 1 < Y3 { s += b[i + layer]; }
+                        if y + 1 < ny { s += b[i + layer]; }
                         a[i] = s - live(cells[i]);
                     }
                 }
                 std::mem::swap(a, b);
             }
             Neighborhood::VonNeumann => {
-                for y in 0..Y3 {
-                    for z in 0..Z3 {
-                        for x in 0..X3 {
+                for y in 0..ny {
+                    for z in 0..nz {
+                        for x in 0..nx {
                             let at = |x: usize, y: usize, z: usize| live(cells[idx(x, y, z)]);
                             let mut n = 0;
                             if x > 0 { n += at(x - 1, y, z); }
-                            if x + 1 < X3 { n += at(x + 1, y, z); }
+                            if x + 1 < nx { n += at(x + 1, y, z); }
                             if y > 0 { n += at(x, y - 1, z); }
-                            if y + 1 < Y3 { n += at(x, y + 1, z); }
+                            if y + 1 < ny { n += at(x, y + 1, z); }
                             if z > 0 { n += at(x, y, z - 1); }
-                            if z + 1 < Z3 { n += at(x, y, z + 1); }
+                            if z + 1 < nz { n += at(x, y, z + 1); }
                             b[idx(x, y, z)] = n;
                         }
                     }
@@ -262,18 +299,19 @@ impl Ca3d {
             return;
         }
         let s = self.preset.stamp;
-        let zc = Z3 / 2;
+        let (nx, ny, nz) = (self.nx, self.ny, self.nz);
+        let zc = nz / 2;
         for (fx, (&v, prev)) in feed.iter().zip(self.prev_feed.iter_mut()).enumerate() {
             let switched_on = v == 1 && *prev == 0;
             *prev = v;
             if !switched_on {
                 continue;
             }
-            let x3 = fx * X3 / feed.len();
-            for y in 0..=s {
-                for dz in zc.saturating_sub(s)..=(zc + s).min(Z3 - 1) {
-                    for dx in x3.saturating_sub(s)..=(x3 + s).min(X3 - 1) {
-                        self.cells[idx(dx, y, dz)] = 1;
+            let x3 = fx * nx / feed.len();
+            for y in 0..=s.min(ny - 1) {
+                for dz in zc.saturating_sub(s)..=(zc + s).min(nz - 1) {
+                    for dx in x3.saturating_sub(s)..=(x3 + s).min(nx - 1) {
+                        self.cells[dx + dz * nx + y * nx * nz] = 1;
                     }
                 }
             }
@@ -285,10 +323,12 @@ impl Ca3d {
     }
 
     pub fn snapshot(&self) -> Snapshot {
-        Snapshot { cells: self.cells.clone(), prev_feed: self.prev_feed.clone(), tick: self.tick }
+        Snapshot { dims: (self.nx, self.ny, self.nz), cells: self.cells.clone(), prev_feed: self.prev_feed.clone(), tick: self.tick }
     }
 
     pub fn restore(&mut self, s: &Snapshot) {
+        // history is cleared on every resize, so a snapshot always matches
+        debug_assert_eq!(s.dims, (self.nx, self.ny, self.nz));
         self.cells = s.cells.clone();
         self.prev_feed = s.prev_feed.clone();
         self.tick = s.tick;
@@ -299,14 +339,15 @@ impl Ca3d {
 mod tests {
     use super::*;
 
+
     /// The straightforward per-cell neighbour count the fast path replaced.
-    fn count_neighbors(cells: &[u8], x: usize, y: usize, z: usize, nbhd: Neighborhood) -> u32 {
+    fn count_neighbors(ca: &Ca3d, x: usize, y: usize, z: usize, nbhd: Neighborhood) -> u32 {
         let (x, y, z) = (x as isize, y as isize, z as isize);
         let live = |xx: isize, yy: isize, zz: isize| -> u32 {
-            if xx < 0 || yy < 0 || zz < 0 || xx >= X3 as isize || yy >= Y3 as isize || zz >= Z3 as isize {
+            if xx < 0 || yy < 0 || zz < 0 || xx >= ca.nx as isize || yy >= ca.ny as isize || zz >= ca.nz as isize {
                 return 0;
             }
-            u32::from(cells[idx(xx as usize, yy as usize, zz as usize)] == 1)
+            u32::from(ca.cells[ca.idx(xx as usize, yy as usize, zz as usize)] == 1)
         };
         let mut n = 0u32;
         match nbhd {
@@ -335,21 +376,41 @@ mod tests {
     }
 
     #[test]
+    fn resize_keeps_overlap_centred_on_the_floor() {
+        let mut ca = Ca3d::with_size(PRESETS_3D[0], 10, 6, 4);
+        let i = ca.idx(5, 0, 2); // floor, middle
+        ca.cells[i] = 1;
+        let i = ca.idx(0, 5, 0); // top corner, cropped away below
+        ca.cells[i] = 1;
+        ca.resize(6, 3, 2);
+        assert_eq!(ca.cells.len(), 6 * 3 * 2);
+        // x 5 -> 3 (offset 2), z 2 -> 1 (offset 1), y stays on the floor
+        assert_eq!(ca.cells[ca.idx(3, 0, 1)], 1);
+        assert_eq!(ca.cells.iter().filter(|&&c| c == 1).count(), 1);
+        ca.resize(10, 6, 4);
+        assert_eq!(ca.cells[ca.idx(5, 0, 2)], 1);
+    }
+
+    #[test]
     fn fast_counts_match_reference() {
         // a pseudo-random soup with live, empty and fading cells, edges included
         let mut state = 12345u64;
-        for nbhd in [Neighborhood::Moore, Neighborhood::VonNeumann] {
-            let mut ca = Ca3d::new(PRESETS_3D[0]);
+        // the default box, and a lopsided one to catch any mixed-up axes
+        for (nbhd, (nx, ny, nz)) in [Neighborhood::Moore, Neighborhood::VonNeumann]
+            .into_iter()
+            .flat_map(|n| [(n, (X3, Y3, Z3)), (n, (37, 11, 5))])
+        {
+            let mut ca = Ca3d::with_size(PRESETS_3D[0], nx, ny, nz);
             for c in ca.cells.iter_mut() {
                 state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
                 *c = ((state >> 33) % 4) as u8;
             }
             ca.count_all(nbhd);
-            for y in 0..Y3 {
-                for z in 0..Z3 {
-                    for x in 0..X3 {
-                        assert_eq!(ca.sum_b[idx(x, y, z)] as u32, count_neighbors(&ca.cells, x, y, z, nbhd),
-                            "{nbhd:?} at ({x},{y},{z})");
+            for y in 0..ny {
+                for z in 0..nz {
+                    for x in 0..nx {
+                        assert_eq!(ca.sum_b[ca.idx(x, y, z)] as u32, count_neighbors(&ca, x, y, z, nbhd),
+                            "{nbhd:?} {nx}x{ny}x{nz} at ({x},{y},{z})");
                     }
                 }
             }

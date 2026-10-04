@@ -8,7 +8,11 @@ function showError(detail) {
   if (detail) $("error-detail").textContent = String(detail);
 }
 
+// Set by setupCamera: re-reads the camera after the 3D box is reshaped.
+let refreshCamera = () => {};
+
 function layoutOverlays() {
+  refreshCamera();
   const h = window.innerHeight;
   const [b1, b2] = wasm.boundaries();
   $("handle1").style.top = `${b1 * h}px`;
@@ -659,7 +663,13 @@ function setupCamera() {
   });
   $("cam-reset").addEventListener("click", () => setAll(wasm.camera_defaults()));
 
-  setAll(wasm.camera_values());
+  // The box is reshaped to fit its band on every resize, which moves the
+  // camera's distance and target too; the height slider spans the box.
+  refreshCamera = () => {
+    inp.ty.max = wasm.grid_size_3d()[1];
+    setAll(wasm.camera_values());
+  };
+  refreshCamera();
 
   // Expose setAll so the canvas gestures drive the same camera and keep the
   // read-outs (and ty/fov sliders) in sync.
@@ -674,8 +684,12 @@ function setupOrbit(cam) {
   const { setAll } = cam;
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const wrap180 = (d) => ((d + 180) % 360 + 360) % 360 - 180;
-  const elMin = -15, elMax = 89;     // elevation clamp (degrees)
-  const distMin = 30, distMax = 320; // distance clamp
+  const elMin = -15, elMax = 89; // elevation clamp (degrees)
+  // zoom limits, relative to the distance that frames the box in its band
+  const distRange = () => {
+    const d = wasm.camera_defaults()[2];
+    return [d * 0.25, d * 3];
+  };
   const ORBIT_SENS = 0.4;    // degrees rotated per CSS pixel dragged
   const WHEEL_SENS = 0.0015; // zoom factor exponent per wheel delta unit
 
@@ -707,7 +721,7 @@ function setupOrbit(cam) {
       // pinch to zoom: fingers apart -> camera moves closer
       const s = spacing();
       if (pinchDist > 0 && s > 0) {
-        v[2] = clamp(v[2] * (pinchDist / s), distMin, distMax);
+        v[2] = clamp(v[2] * (pinchDist / s), ...distRange());
         setAll(v);
       }
       pinchDist = s;
@@ -732,7 +746,7 @@ function setupOrbit(cam) {
     if (!inTop(e.clientY)) return;
     e.preventDefault();
     const v = wasm.camera_values();
-    v[2] = clamp(v[2] * Math.exp(e.deltaY * WHEEL_SENS), distMin, distMax);
+    v[2] = clamp(v[2] * Math.exp(e.deltaY * WHEEL_SENS), ...distRange());
     setAll(v);
   }, { passive: false });
 }
