@@ -441,7 +441,9 @@ function ca3dContent() {
   const chip = (html) => { const c = el("span", "chip"); c.innerHTML = html; return c; };
   chips.append(
     chip(`born with <b>${prettySpec(birth)}</b> live neighbours`),
-    chip(`survives with <b>${prettySpec(survival)}</b>`),
+    survival
+      ? chip(`survives with <b>${prettySpec(survival)}</b>`)
+      : chip(`lives for <b>one</b> tick only`),
   );
   if (nStates > 2) chips.append(chip(`fades out over <b>${nStates - 2}</b> ticks after dying`));
   chips.append(chip(moore ? `counts all <b>26</b> touching cells` : `counts only the <b>6</b> face-to-face cells`));

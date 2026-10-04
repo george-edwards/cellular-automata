@@ -14,4 +14,4 @@ When a cell dies here it doesn't vanish instantly — it fades through in-betwee
 <fade>
 {{/fades}}
 
-New seeds are pushed up through the floor of the box wherever Game of Life cells touch the boundary below. Bright cubes are alive, darker ones are fading away.
+Whenever a Game of Life cell arrives at the boundary below, it pushes a seed up through the floor of the box. The whole box drifts slowly upward, so whatever grows rises like smoke and leaves through the top instead of filling the box. Bright cubes are alive{{#fades}}, darker ones are fading away{{/fades}}.

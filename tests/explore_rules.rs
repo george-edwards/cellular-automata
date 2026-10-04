@@ -37,15 +37,15 @@ const fn mask(bits: &[u32]) -> u32 {
 fn explore() {
     let volume = (X3 * Y3 * Z3) as f64;
     let candidates: Vec<Preset3d> = vec![
-        Preset3d { name: "445", rule_str: "", blurb: "", survival: mask(&[4]), birth: mask(&[4]), states: 5, nbhd: Neighborhood::Moore, stamp: 1 },
-        Preset3d { name: "Pyroclastic", rule_str: "", blurb: "", survival: range_mask(4, 7), birth: range_mask(6, 8), states: 10, nbhd: Neighborhood::Moore, stamp: 1 },
-        Preset3d { name: "CrystalVN", rule_str: "", blurb: "", survival: range_mask(1, 2), birth: mask(&[1, 3]), states: 5, nbhd: Neighborhood::VonNeumann, stamp: 0 },
-        Preset3d { name: "Coral", rule_str: "", blurb: "", survival: range_mask(5, 8), birth: mask(&[6, 7, 9, 12]), states: 4, nbhd: Neighborhood::Moore, stamp: 1 },
-        Preset3d { name: "Brain3D-B4", rule_str: "", blurb: "", survival: 0, birth: mask(&[4]), states: 5, nbhd: Neighborhood::Moore, stamp: 1 },
-        Preset3d { name: "Brain3D-B4-s2", rule_str: "", blurb: "", survival: 0, birth: mask(&[4]), states: 2, nbhd: Neighborhood::Moore, stamp: 1 },
-        Preset3d { name: "Slow445-s2stamp2", rule_str: "", blurb: "", survival: mask(&[4]), birth: mask(&[4]), states: 5, nbhd: Neighborhood::Moore, stamp: 2 },
-        Preset3d { name: "Builder", rule_str: "", blurb: "", survival: mask(&[2, 6, 9]), birth: mask(&[4, 6, 8, 9]), states: 10, nbhd: Neighborhood::Moore, stamp: 1 },
-        Preset3d { name: "ExpandShell", rule_str: "", blurb: "", survival: range_mask(0, 26), birth: mask(&[6]), states: 3, nbhd: Neighborhood::Moore, stamp: 1 },
+        Preset3d { name: "445", rule_str: "", blurb: "", survival: mask(&[4]), birth: mask(&[4]), states: 5, nbhd: Neighborhood::Moore, stamp: 1, rise: 0 },
+        Preset3d { name: "Pyroclastic", rule_str: "", blurb: "", survival: range_mask(4, 7), birth: range_mask(6, 8), states: 10, nbhd: Neighborhood::Moore, stamp: 1, rise: 0 },
+        Preset3d { name: "CrystalVN", rule_str: "", blurb: "", survival: range_mask(1, 2), birth: mask(&[1, 3]), states: 5, nbhd: Neighborhood::VonNeumann, stamp: 0, rise: 0 },
+        Preset3d { name: "Coral", rule_str: "", blurb: "", survival: range_mask(5, 8), birth: mask(&[6, 7, 9, 12]), states: 4, nbhd: Neighborhood::Moore, stamp: 1, rise: 0 },
+        Preset3d { name: "Brain3D-B4", rule_str: "", blurb: "", survival: 0, birth: mask(&[4]), states: 5, nbhd: Neighborhood::Moore, stamp: 1, rise: 0 },
+        Preset3d { name: "Brain3D-B4-s2", rule_str: "", blurb: "", survival: 0, birth: mask(&[4]), states: 2, nbhd: Neighborhood::Moore, stamp: 1, rise: 0 },
+        Preset3d { name: "Slow445-s2stamp2", rule_str: "", blurb: "", survival: mask(&[4]), birth: mask(&[4]), states: 5, nbhd: Neighborhood::Moore, stamp: 2, rise: 0 },
+        Preset3d { name: "Builder", rule_str: "", blurb: "", survival: mask(&[2, 6, 9]), birth: mask(&[4, 6, 8, 9]), states: 10, nbhd: Neighborhood::Moore, stamp: 1, rise: 0 },
+        Preset3d { name: "ExpandShell", rule_str: "", blurb: "", survival: range_mask(0, 26), birth: mask(&[6]), states: 3, nbhd: Neighborhood::Moore, stamp: 1, rise: 0 },
     ];
     for preset in candidates {
         let mut ca = Ca3d::new(preset);

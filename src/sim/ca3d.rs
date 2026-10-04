@@ -8,7 +8,7 @@ pub const X3: usize = 72;
 pub const Y3: usize = 48;
 pub const Z3: usize = 72;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Neighborhood {
     Moore,      // 26 neighbours
     VonNeumann, // 6 face neighbours
@@ -28,6 +28,10 @@ pub struct Preset3d {
     /// Half-extent of the solid block stamped into the floor for every live
     /// Game of Life cell that touches the boundary (denser rules need more).
     pub stamp: usize,
+    /// The whole volume drifts up one layer every `rise` ticks, and the top
+    /// layer leaves the box (0 = no drift). This gives the closed box a way
+    /// out, so continuous input can't simply fill it.
+    pub rise: u32,
 }
 
 const fn mask(bits: &[u32]) -> u32 {
@@ -50,67 +54,76 @@ const fn range_mask(lo: u32, hi: u32) -> u32 {
     m
 }
 
+/// Chosen with tests/rule_search.rs against the cascade's real input. Every
+/// preset drifts upward: without a way out, continuous input either dies
+/// away or fills the closed box, and almost nothing sits in between.
+/// `rise` was tuned per rule so each stays busy without filling the box.
 pub const PRESETS_3D: &[Preset3d] = &[
-    Preset3d {
-        name: "445",
-        rule_str: "4/4/5/Moore",
-        blurb: "A slow builder: seeds grow into sparse, crystalline towers and arches that hold their shape.",
-        survival: mask(&[4]),
-        birth: mask(&[4]),
-        states: 5,
-        nbhd: Neighborhood::Moore,
-        stamp: 1,
-    },
-    Preset3d {
-        name: "Pyroclastic",
-        rule_str: "4-7/6-8/10/Moore",
-        blurb: "Erupts into billowing, smoke-like plumes that collapse and re-ignite wherever fresh debris lands.",
-        survival: range_mask(4, 7),
-        birth: range_mask(6, 8),
-        states: 10,
-        nbhd: Neighborhood::Moore,
-        stamp: 1,
-    },
-    Preset3d {
-        name: "Crystal Growth",
-        rule_str: "1-2/1,3/5/von Neumann",
-        blurb: "Grows sharp, branching crystals — like frost spreading across a window, but in 3D.",
-        survival: range_mask(1, 2),
-        birth: mask(&[1, 3]),
-        states: 5,
-        nbhd: Neighborhood::VonNeumann,
-        stamp: 0,
-    },
-    Preset3d {
-        name: "Coral",
-        rule_str: "5-8/6-7,9,12/4/Moore",
-        blurb: "Builds reef-like shells: crowded interiors die off, so only the living surface keeps growing outward.",
-        survival: range_mask(5, 8),
-        birth: mask(&[6, 7, 9, 12]),
-        states: 4,
-        nbhd: Neighborhood::Moore,
-        stamp: 1,
-    },
     Preset3d {
         name: "Builder",
         rule_str: "2,6,9/4,6,8-9/10/Moore",
-        blurb: "Sparse scaffolding that endlessly assembles, dissolves and re-assembles itself.",
+        blurb: "Scaffolding that keeps assembling, collapsing and re-assembling as it drifts upward.",
         survival: mask(&[2, 6, 9]),
         birth: mask(&[4, 6, 8, 9]),
         states: 10,
         nbhd: Neighborhood::Moore,
         stamp: 1,
+        rise: 12,
+    },
+    Preset3d {
+        name: "Cumulus",
+        rule_str: "0-7/7-10/10/Moore",
+        blurb: "Each arrival swells into a rounded cloud that rises and slowly burns out from within.",
+        survival: range_mask(0, 7),
+        birth: range_mask(7, 10),
+        states: 10,
+        nbhd: Neighborhood::Moore,
+        stamp: 1,
+        rise: 7,
+    },
+    Preset3d {
+        name: "Puffs",
+        rule_str: "0-6/6/3/Moore",
+        blurb: "Short bursts of growth that break away from the floor as separate puffs of smoke.",
+        survival: range_mask(0, 6),
+        birth: mask(&[6]),
+        states: 3,
+        nbhd: Neighborhood::Moore,
+        stamp: 1,
+        rise: 3,
+    },
+    Preset3d {
+        name: "Foam",
+        rule_str: "/4/2/Moore",
+        blurb: "No cell survives a second tick, so activity travels as waves that leave a rising sheet of foam.",
+        survival: 0,
+        birth: mask(&[4]),
+        states: 2,
+        nbhd: Neighborhood::Moore,
+        stamp: 1,
+        rise: 4,
     },
 ];
 
 pub struct Ca3d {
     pub preset: Preset3d,
     pub cells: Vec<u8>, // x + z*X3 + y*X3*Z3
+    /// Life's top row on the previous tick: only cells that have just
+    /// switched on seed the floor, so a still life stuck against the
+    /// boundary seeds once rather than every tick forever.
+    prev_feed: Vec<u8>,
+    tick: u64,
+    // scratch buffers for `step`, kept to avoid reallocating every tick
+    next: Vec<u8>,
+    sum_a: Vec<u8>,
+    sum_b: Vec<u8>,
 }
 
 #[derive(Clone)]
 pub struct Snapshot {
     cells: Vec<u8>,
+    prev_feed: Vec<u8>,
+    tick: u64,
 }
 
 #[inline]
@@ -120,57 +133,140 @@ pub fn idx(x: usize, y: usize, z: usize) -> usize {
 
 impl Ca3d {
     pub fn new(preset: Preset3d) -> Self {
-        Self { preset, cells: vec![0; X3 * Y3 * Z3] }
+        let n = X3 * Y3 * Z3;
+        Self {
+            preset,
+            cells: vec![0; n],
+            prev_feed: Vec::new(),
+            tick: 0,
+            next: vec![0; n],
+            sum_a: vec![0; n],
+            sum_b: vec![0; n],
+        }
     }
 
     pub fn set_preset(&mut self, preset: Preset3d) {
         self.preset = preset;
         self.cells.fill(0);
+        self.prev_feed.clear();
+        self.tick = 0;
     }
 
-    /// One generation, then stamp seeds for every live cell in `feed`
-    /// (Life's top row, `feed.len()` cells wide, mapped onto the X axis).
+    /// One generation, then drift (see `Preset3d::rise`), then stamp seeds
+    /// for every cell of `feed` (Life's top row, `feed.len()` cells wide,
+    /// mapped onto the X axis) that has switched on since the last tick.
     pub fn step(&mut self, feed: &[u8]) {
         let p = self.preset;
-        let mut next = vec![0u8; self.cells.len()];
-        for y in 0..Y3 {
-            for z in 0..Z3 {
-                for x in 0..X3 {
-                    let i = idx(x, y, z);
-                    let v = self.cells[i];
-                    if v > 1 {
-                        // refractory: keep fading regardless of neighbours
-                        let nv = v + 1;
-                        next[i] = if nv >= p.states { 0 } else { nv };
-                        continue;
-                    }
-                    let n = self.count_neighbors(x, y, z, p.nbhd);
-                    next[i] = if v == 1 {
-                        if p.survival >> n & 1 == 1 {
-                            1
-                        } else if p.states == 2 {
-                            0
-                        } else {
-                            2
-                        }
+        self.count_all(p.nbhd);
+        let counts = &self.sum_b;
+        for (i, (&v, out)) in self.cells.iter().zip(self.next.iter_mut()).enumerate() {
+            *out = if v > 1 {
+                // refractory: keep fading regardless of neighbours
+                let nv = v + 1;
+                if nv >= p.states { 0 } else { nv }
+            } else {
+                let n = counts[i] as u32;
+                if v == 1 {
+                    if p.survival >> n & 1 == 1 {
+                        1
+                    } else if p.states == 2 {
+                        0
                     } else {
-                        u8::from(p.birth >> n & 1 == 1)
-                    };
+                        2
+                    }
+                } else {
+                    u8::from(p.birth >> n & 1 == 1)
+                }
+            };
+        }
+        std::mem::swap(&mut self.cells, &mut self.next);
+        self.tick += 1;
+        if p.rise > 0 && self.tick % p.rise as u64 == 0 {
+            let layer = X3 * Z3;
+            self.cells.copy_within(0..(Y3 - 1) * layer, layer);
+            self.cells[..layer].fill(0);
+        }
+        self.inject(feed);
+    }
+
+    /// Live-neighbour count for every cell, left in `sum_b`. Moore uses
+    /// running sums along X, then Z, then Y (a 3×3×3 box sum, minus the cell
+    /// itself), which is far cheaper than visiting 26 neighbours per cell.
+    fn count_all(&mut self, nbhd: Neighborhood) {
+        let live = |v: u8| u8::from(v == 1);
+        let (cells, a, b) = (&self.cells, &mut self.sum_a, &mut self.sum_b);
+        match nbhd {
+            Neighborhood::Moore => {
+                // X: a = live[x-1] + live[x] + live[x+1]
+                for row in 0..Y3 * Z3 {
+                    let r = row * X3;
+                    for x in 0..X3 {
+                        let mut s = live(cells[r + x]);
+                        if x > 0 { s += live(cells[r + x - 1]); }
+                        if x + 1 < X3 { s += live(cells[r + x + 1]); }
+                        a[r + x] = s;
+                    }
+                }
+                // Z: b = a[z-1] + a[z] + a[z+1]
+                for y in 0..Y3 {
+                    for z in 0..Z3 {
+                        let r = idx(0, y, z);
+                        for x in 0..X3 {
+                            let mut s = a[r + x];
+                            if z > 0 { s += a[r + x - X3]; }
+                            if z + 1 < Z3 { s += a[r + x + X3]; }
+                            b[r + x] = s;
+                        }
+                    }
+                }
+                // Y: a = b[y-1] + b[y] + b[y+1], then drop the cell itself
+                let layer = X3 * Z3;
+                for y in 0..Y3 {
+                    for i in y * layer..(y + 1) * layer {
+                        let mut s = b[i];
+                        if y > 0 { s += b[i - layer]; }
+                        if y + 1 < Y3 { s += b[i + layer]; }
+                        a[i] = s - live(cells[i]);
+                    }
+                }
+                std::mem::swap(a, b);
+            }
+            Neighborhood::VonNeumann => {
+                for y in 0..Y3 {
+                    for z in 0..Z3 {
+                        for x in 0..X3 {
+                            let at = |x: usize, y: usize, z: usize| live(cells[idx(x, y, z)]);
+                            let mut n = 0;
+                            if x > 0 { n += at(x - 1, y, z); }
+                            if x + 1 < X3 { n += at(x + 1, y, z); }
+                            if y > 0 { n += at(x, y - 1, z); }
+                            if y + 1 < Y3 { n += at(x, y + 1, z); }
+                            if z > 0 { n += at(x, y, z - 1); }
+                            if z + 1 < Z3 { n += at(x, y, z + 1); }
+                            b[idx(x, y, z)] = n;
+                        }
+                    }
                 }
             }
         }
-        self.cells = next;
-        self.inject(feed);
     }
 
     fn inject(&mut self, feed: &[u8]) {
         if feed.is_empty() {
             return;
         }
+        if self.prev_feed.len() != feed.len() {
+            // first tick, or the page was resized: nothing counts as "new"
+            // until we've seen one row at this width
+            self.prev_feed = feed.to_vec();
+            return;
+        }
         let s = self.preset.stamp;
         let zc = Z3 / 2;
-        for (fx, &v) in feed.iter().enumerate() {
-            if v == 0 {
+        for (fx, (&v, prev)) in feed.iter().zip(self.prev_feed.iter_mut()).enumerate() {
+            let switched_on = v == 1 && *prev == 0;
+            *prev = v;
+            if !switched_on {
                 continue;
             }
             let x3 = fx * X3 / feed.len();
@@ -184,13 +280,33 @@ impl Ca3d {
         }
     }
 
-    fn count_neighbors(&self, x: usize, y: usize, z: usize, nbhd: Neighborhood) -> u32 {
+    pub fn population(&self) -> usize {
+        self.cells.iter().filter(|&&c| c == 1).count()
+    }
+
+    pub fn snapshot(&self) -> Snapshot {
+        Snapshot { cells: self.cells.clone(), prev_feed: self.prev_feed.clone(), tick: self.tick }
+    }
+
+    pub fn restore(&mut self, s: &Snapshot) {
+        self.cells = s.cells.clone();
+        self.prev_feed = s.prev_feed.clone();
+        self.tick = s.tick;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The straightforward per-cell neighbour count the fast path replaced.
+    fn count_neighbors(cells: &[u8], x: usize, y: usize, z: usize, nbhd: Neighborhood) -> u32 {
         let (x, y, z) = (x as isize, y as isize, z as isize);
         let live = |xx: isize, yy: isize, zz: isize| -> u32 {
             if xx < 0 || yy < 0 || zz < 0 || xx >= X3 as isize || yy >= Y3 as isize || zz >= Z3 as isize {
                 return 0;
             }
-            u32::from(self.cells[idx(xx as usize, yy as usize, zz as usize)] == 1)
+            u32::from(cells[idx(xx as usize, yy as usize, zz as usize)] == 1)
         };
         let mut n = 0u32;
         match nbhd {
@@ -218,22 +334,27 @@ impl Ca3d {
         n
     }
 
-    pub fn population(&self) -> usize {
-        self.cells.iter().filter(|&&c| c == 1).count()
+    #[test]
+    fn fast_counts_match_reference() {
+        // a pseudo-random soup with live, empty and fading cells, edges included
+        let mut state = 12345u64;
+        for nbhd in [Neighborhood::Moore, Neighborhood::VonNeumann] {
+            let mut ca = Ca3d::new(PRESETS_3D[0]);
+            for c in ca.cells.iter_mut() {
+                state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                *c = ((state >> 33) % 4) as u8;
+            }
+            ca.count_all(nbhd);
+            for y in 0..Y3 {
+                for z in 0..Z3 {
+                    for x in 0..X3 {
+                        assert_eq!(ca.sum_b[idx(x, y, z)] as u32, count_neighbors(&ca.cells, x, y, z, nbhd),
+                            "{nbhd:?} at ({x},{y},{z})");
+                    }
+                }
+            }
+        }
     }
-
-    pub fn snapshot(&self) -> Snapshot {
-        Snapshot { cells: self.cells.clone() }
-    }
-
-    pub fn restore(&mut self, s: &Snapshot) {
-        self.cells = s.cells.clone();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
 
     /// Deterministic stand-in for Life's top row: sparse bursts of cells.
     fn synthetic_feed(tick: u64, width: usize, density_pct: u64) -> Vec<u8> {
