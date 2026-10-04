@@ -34,7 +34,7 @@ impl Rule30 {
         self.history.len() >= self.rows
     }
 
-    /// The oldest visible row — the one touching the boundary above.
+    /// The oldest visible row: the one touching the boundary above.
     pub fn top_row(&self) -> &[u8] {
         self.history.front().expect("history is never empty")
     }
@@ -100,7 +100,7 @@ mod tests {
         r.step();
         let c = 5;
         // After one step: cells c-1, c, c+1 should be 1,1,0? Actual rule 30
-        // row 1 from single cell is "111" centered? Known: t=1 is 1110? No —
+        // row 1 from single cell is "111" centered? Known: t=1 is 1110? No:
         // canonical rule 30 second row is `XXX` shifted: cells -1,0,1 = 1,1,1?
         // Compute by truth table: left^(c|r):
         //  x=c-1: l=0,c=0,r=1 -> 0^(0|1)=1

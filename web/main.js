@@ -141,7 +141,7 @@ function el(tag, cls, ...children) {
   return e;
 }
 
-// spec: 9 chars — '.' empty, '#' alive, 'o' empty+outlined, '@' alive+outlined,
+// spec: 9 chars: '.' empty, '#' alive, 'o' empty+outlined, '@' alive+outlined,
 // 'n' highlighted as a counted neighbour, 'x' faded/gone
 function miniGrid(spec, accent) {
   const g = el("div", "mini");
