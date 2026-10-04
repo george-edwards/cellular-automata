@@ -261,7 +261,9 @@ pub fn step_backward() {
 
 #[wasm_bindgen]
 pub fn set_speed(tps: f64) {
-    with_app(|a| a.tps = tps.clamp(1.0, 60.0));
+    // 180 is as fast as an Intel Xe laptop GPU keeps exactly (at 240 it
+    // starts dropping ticks: at most 4 steps run per frame)
+    with_app(|a| a.tps = tps.clamp(1.0, 180.0));
 }
 
 #[wasm_bindgen]

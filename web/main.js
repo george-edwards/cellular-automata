@@ -837,7 +837,19 @@ async function boot() {
   $("btn-fwd").addEventListener("click", () => { wasm.step_forward(); setPlayIcon(); });
   $("btn-back").addEventListener("click", () => { wasm.step_backward(); setPlayIcon(); });
   $("btn-reset").addEventListener("click", () => wasm.reset());
-  $("speed").addEventListener("input", (e) => wasm.set_speed(Number(e.target.value)));
+  // The speed slider is logarithmic: every step along it multiplies the
+  // speed by the same amount, so slow speeds stay as easy to pick as fast.
+  const MIN_TPS = 1, MAX_TPS = 180;
+  const speed = $("speed");
+  const applySpeed = () => {
+    const tps = Math.round(MIN_TPS * (MAX_TPS / MIN_TPS) ** (speed.value / 100));
+    wasm.set_speed(tps);
+    const label = `${tps} tick${tps === 1 ? "" : "s"} per second`;
+    speed.setAttribute("aria-valuetext", label);
+    speed.title = label;
+  };
+  speed.addEventListener("input", applySpeed);
+  applySpeed();
 
   // keyboard
   window.addEventListener("keydown", (e) => {
